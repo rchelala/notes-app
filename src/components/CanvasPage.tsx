@@ -277,12 +277,22 @@ export const CanvasPage: React.FC<Props> = ({
   // Predicted points drawn speculatively — erased at start of next real frame
   const predictedPointsRef = useRef<Point[]>([]);
 
-  // ── App state
-  const [tool, setTool] = useState<Tool>('pen');
-  const [color, setColor] = useState('#1a1a1a');
-  const [strokeWidth, setStrokeWidth] = useState(3);
-  const [shapeType, setShapeType] = useState<ShapeType>('rectangle');
+  // ── App state (also mirrored in refs so native event handlers always see current values)
+  const [tool, setToolState] = useState<Tool>('pen');
+  const [color, setColorState] = useState('#1a1a1a');
+  const [strokeWidth, setStrokeWidthState] = useState(3);
+  const [shapeType, setShapeTypeState] = useState<ShapeType>('rectangle');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toolRef = useRef<Tool>('pen');
+  const colorRef = useRef('#1a1a1a');
+  const strokeWidthRef = useRef(3);
+  const shapeTypeRef = useRef<ShapeType>('rectangle');
+
+  const setTool = (t: Tool) => { toolRef.current = t; setToolState(t); };
+  const setColor = (c: string) => { colorRef.current = c; setColorState(c); };
+  const setStrokeWidth = (w: number) => { strokeWidthRef.current = w; setStrokeWidthState(w); };
+  const setShapeType = (s: ShapeType) => { shapeTypeRef.current = s; setShapeTypeState(s); };
 
   // ── Element history (undo/redo)
   const [history, setHistory] = useState<CanvasElement[][]>([pageData.elements]);
@@ -471,19 +481,23 @@ export const CanvasPage: React.FC<Props> = ({
     activeCtxRef.current = ctx;
     predictedPointsRef.current = [];
 
+    const t = toolRef.current;
+    const c = colorRef.current;
+    const w = strokeWidthRef.current;
+
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    if (tool === 'highlighter') {
+    if (t === 'highlighter') {
       ctx.globalAlpha = HIGHLIGHTER_ALPHA;
       ctx.globalCompositeOperation = 'multiply';
-      ctx.strokeStyle = color;
-      ctx.lineWidth = scaleX(strokeWidth * 6, canvas);
+      ctx.strokeStyle = c;
+      ctx.lineWidth = scaleX(w * 6, canvas);
     } else {
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = color;
-      ctx.lineWidth = scaleX(strokeWidth, canvas);
+      ctx.strokeStyle = c;
+      ctx.lineWidth = scaleX(w, canvas);
     }
 
     // Draw initial dot so a tap always leaves a mark
@@ -491,12 +505,12 @@ export const CanvasPage: React.FC<Props> = ({
     ctx.arc(
       scaleX(pt.x, canvas),
       scaleY(pt.y, canvas),
-      Math.max(1, scaleX(strokeWidth / 2, canvas)),
+      Math.max(1, scaleX(w / 2, canvas)),
       0,
       Math.PI * 2
     );
-    ctx.fillStyle = color;
-    ctx.globalAlpha = tool === 'highlighter' ? HIGHLIGHTER_ALPHA : 1;
+    ctx.fillStyle = c;
+    ctx.globalAlpha = t === 'highlighter' ? HIGHLIGHTER_ALPHA : 1;
     ctx.fill();
 
     lastPointRef.current = pt;
@@ -573,13 +587,13 @@ export const CanvasPage: React.FC<Props> = ({
     const tempShape: ShapeElement = {
       id: '__active__',
       elementType: 'shape',
-      shapeType,
+      shapeType: shapeTypeRef.current,
       x1: start.x,
       y1: start.y,
       x2: end.x,
       y2: end.y,
-      color,
-      strokeWidth,
+      color: colorRef.current,
+      strokeWidth: strokeWidthRef.current,
     };
     renderShape(ctx, tempShape, canvas);
   };
@@ -638,168 +652,186 @@ export const CanvasPage: React.FC<Props> = ({
     [elements, pushHistory]
   );
 
-  // ─── Pointer down ─────────────────────────────────────────────────────────
+  // ─── Native pointer handlers (bypass React event system for zero extra latency) ──
 
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    // Palm rejection on iPad: only respond to pen or mouse
-    if (e.pointerType === 'touch') return;
-    e.preventDefault();
-    (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
+  // We keep a stable ref to elements/pushHistory so native handlers can access current values
+  const elementsRef = useRef(elements);
+  useEffect(() => { elementsRef.current = elements; }, [elements]);
+  const pushHistoryRef = useRef(pushHistory);
+  useEffect(() => { pushHistoryRef.current = pushHistory; }, [pushHistory]);
 
-    // Refresh rect cache at the start of each stroke (scroll may have moved canvas)
-    cachedRectRef.current = activeRef.current!.getBoundingClientRect();
-    const rect = getRect();
-    const pt = getPointerPoint(e, rect);
-    const vx = pt.x;
-    const vy = pt.y;
+  useEffect(() => {
+    const canvas = activeRef.current;
+    if (!canvas) return;
 
-    if (tool === 'eraser') {
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return;
+      e.preventDefault();
+      canvas.setPointerCapture(e.pointerId);
+
+      cachedRectRef.current = canvas.getBoundingClientRect();
+      const rect = cachedRectRef.current;
+      const vx = ((e.clientX - rect.left) / rect.width) * PAGE_W;
+      const vy = ((e.clientY - rect.top) / rect.height) * PAGE_H;
+      const pt: Point = { x: vx, y: vy, pressure: e.pressure > 0 ? e.pressure : 0.5 };
+      const t = toolRef.current;
+
+      if (t === 'eraser') {
+        isDrawingRef.current = true;
+        eraseAt(vx, vy);
+        return;
+      }
+      if (t === 'text') {
+        setTextPos({ x: vx, y: vy });
+        setTextValue('');
+        setTimeout(() => textInputRef.current?.focus(), 50);
+        return;
+      }
+      if (t === 'shape') {
+        isDrawingRef.current = true;
+        shapeStartRef.current = { x: vx, y: vy };
+        return;
+      }
+      if (t === 'lasso') {
+        isDrawingRef.current = true;
+        lassoPointsRef.current = [pt];
+        setSelectedIds(new Set());
+        return;
+      }
+      // pen / highlighter
       isDrawingRef.current = true;
-      eraseAt(vx, vy);
-      return;
-    }
+      currentPointsRef.current = [pt];
+      beginActiveStroke(pt);
+    };
 
-    if (tool === 'text') {
-      setTextPos({ x: vx, y: vy });
-      setTextValue('');
-      setTimeout(() => textInputRef.current?.focus(), 50);
-      return;
-    }
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return;
+      if (!isDrawingRef.current) return;
+      e.preventDefault();
 
-    if (tool === 'shape') {
-      isDrawingRef.current = true;
-      shapeStartRef.current = { x: vx, y: vy };
-      return;
-    }
+      const rect = cachedRectRef.current!;
+      const t = toolRef.current;
 
-    if (tool === 'lasso') {
-      isDrawingRef.current = true;
-      lassoPointsRef.current = [pt];
-      setSelectedIds(new Set());
-      return;
-    }
-
-    // pen / highlighter
-    isDrawingRef.current = true;
-    currentPointsRef.current = [pt];
-    beginActiveStroke(pt);
-  };
-
-  // ─── Pointer move ─────────────────────────────────────────────────────────
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType === 'touch') return;
-    if (!isDrawingRef.current) return;
-    e.preventDefault();
-
-    const rect = getRect();
-
-    if (tool === 'eraser') {
-      const pt = getPointerPoint(e, rect);
-      eraseAt(pt.x, pt.y);
-      return;
-    }
-
-    if (tool === 'shape' && shapeStartRef.current) {
-      const pt = getPointerPoint(e, rect);
-      drawActiveShape(shapeStartRef.current, { x: pt.x, y: pt.y });
-      return;
-    }
-
-    if (tool === 'lasso') {
-      const pt = getPointerPoint(e, rect);
-      lassoPointsRef.current.push(pt);
-      drawActiveLasso(lassoPointsRef.current);
-      return;
-    }
-
-    if (tool === 'pen' || tool === 'highlighter') {
-      const native = e.nativeEvent as PointerEvent;
-
-      // 1. Erase last frame's speculative predicted points
-      clearPredicted();
-
-      // 2. Draw all real coalesced points (240Hz Apple Pencil data)
-      const coalesced: PointerEvent[] = native.getCoalescedEvents?.() ?? [native];
-      for (const ne of coalesced) {
+      if (t === 'eraser') {
+        const vx = ((e.clientX - rect.left) / rect.width) * PAGE_W;
+        const vy = ((e.clientY - rect.top) / rect.height) * PAGE_H;
+        eraseAt(vx, vy);
+        return;
+      }
+      if (t === 'shape' && shapeStartRef.current) {
+        const vx = ((e.clientX - rect.left) / rect.width) * PAGE_W;
+        const vy = ((e.clientY - rect.top) / rect.height) * PAGE_H;
+        drawActiveShape(shapeStartRef.current, { x: vx, y: vy });
+        return;
+      }
+      if (t === 'lasso') {
         const pt: Point = {
-          x: ((ne.clientX - rect.left) / rect.width) * PAGE_W,
-          y: ((ne.clientY - rect.top) / rect.height) * PAGE_H,
-          pressure: ne.pressure > 0 ? ne.pressure : 0.5,
+          x: ((e.clientX - rect.left) / rect.width) * PAGE_W,
+          y: ((e.clientY - rect.top) / rect.height) * PAGE_H,
+          pressure: e.pressure > 0 ? e.pressure : 0.5,
         };
-        currentPointsRef.current.push(pt);
-        continueActiveStroke(pt);
+        lassoPointsRef.current.push(pt);
+        drawActiveLasso(lassoPointsRef.current);
+        return;
       }
+      if (t === 'pen' || t === 'highlighter') {
+        // 1. Erase last frame's speculative predicted points
+        clearPredicted();
 
-      // 3. Draw predicted points for next frame — makes pencil feel instant
-      const predicted: PointerEvent[] = native.getPredictedEvents?.() ?? [];
-      if (predicted.length > 0) {
-        const predictedPts = predicted.map((ne) => ({
-          x: ((ne.clientX - rect.left) / rect.width) * PAGE_W,
-          y: ((ne.clientY - rect.top) / rect.height) * PAGE_H,
-          pressure: ne.pressure > 0 ? ne.pressure : 0.5,
-        }));
-        drawPredictedPoints(predictedPts);
-      }
-    }
-  };
-
-  // ─── Pointer up ───────────────────────────────────────────────────────────
-
-  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType === 'touch') return;
-    if (!isDrawingRef.current) return;
-    isDrawingRef.current = false;
-    clearActive();
-
-    const rect = getRect();
-    const pt = getPointerPoint(e, rect);
-
-    if (tool === 'shape' && shapeStartRef.current) {
-      const newShape: ShapeElement = {
-        id: uuid(),
-        elementType: 'shape',
-        shapeType,
-        x1: shapeStartRef.current.x,
-        y1: shapeStartRef.current.y,
-        x2: pt.x,
-        y2: pt.y,
-        color,
-        strokeWidth,
-      };
-      shapeStartRef.current = null;
-      pushHistory([...elements, newShape]);
-      return;
-    }
-
-    if (tool === 'lasso') {
-      const lasso = lassoPointsRef.current;
-      if (lasso.length > 3) {
-        const ids = new Set<string>();
-        for (const el of elements) {
-          if (el.elementType === 'stroke' && strokeInLasso(el, lasso)) {
-            ids.add(el.id);
-          }
+        // 2. Draw all real 240Hz coalesced points
+        const coalesced: PointerEvent[] = e.getCoalescedEvents?.() ?? [e];
+        for (const ne of coalesced) {
+          const pt: Point = {
+            x: ((ne.clientX - rect.left) / rect.width) * PAGE_W,
+            y: ((ne.clientY - rect.top) / rect.height) * PAGE_H,
+            pressure: ne.pressure > 0 ? ne.pressure : 0.5,
+          };
+          currentPointsRef.current.push(pt);
+          continueActiveStroke(pt);
         }
-        setSelectedIds(ids);
-      }
-      lassoPointsRef.current = [];
-      return;
-    }
 
-    if ((tool === 'pen' || tool === 'highlighter') && currentPointsRef.current.length > 0) {
-      const newStroke: Stroke = {
-        id: uuid(),
-        elementType: 'stroke',
-        tool,
-        points: currentPointsRef.current,
-        color,
-        width: strokeWidth,
-      };
-      currentPointsRef.current = [];
-      pushHistory([...elements, newStroke]);
-    }
-  };
+        // 3. Draw predicted points speculatively
+        const predicted: PointerEvent[] = e.getPredictedEvents?.() ?? [];
+        if (predicted.length > 0) {
+          drawPredictedPoints(predicted.map((ne) => ({
+            x: ((ne.clientX - rect.left) / rect.width) * PAGE_W,
+            y: ((ne.clientY - rect.top) / rect.height) * PAGE_H,
+            pressure: ne.pressure > 0 ? ne.pressure : 0.5,
+          })));
+        }
+      }
+    };
+
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return;
+      if (!isDrawingRef.current) return;
+      isDrawingRef.current = false;
+      predictedPointsRef.current = [];
+      clearActive();
+
+      const rect = cachedRectRef.current!;
+      const vx = ((e.clientX - rect.left) / rect.width) * PAGE_W;
+      const vy = ((e.clientY - rect.top) / rect.height) * PAGE_H;
+      const pt: Point = { x: vx, y: vy, pressure: e.pressure > 0 ? e.pressure : 0.5 };
+      const t = toolRef.current;
+
+      if (t === 'shape' && shapeStartRef.current) {
+        const newShape: ShapeElement = {
+          id: uuid(),
+          elementType: 'shape',
+          shapeType: shapeTypeRef.current,
+          x1: shapeStartRef.current.x,
+          y1: shapeStartRef.current.y,
+          x2: pt.x,
+          y2: pt.y,
+          color: colorRef.current,
+          strokeWidth: strokeWidthRef.current,
+        };
+        shapeStartRef.current = null;
+        pushHistoryRef.current([...elementsRef.current, newShape]);
+        return;
+      }
+      if (t === 'lasso') {
+        const lasso = lassoPointsRef.current;
+        if (lasso.length > 3) {
+          const ids = new Set<string>();
+          for (const el of elementsRef.current) {
+            if (el.elementType === 'stroke' && strokeInLasso(el, lasso)) ids.add(el.id);
+          }
+          setSelectedIds(ids);
+        }
+        lassoPointsRef.current = [];
+        return;
+      }
+      if ((t === 'pen' || t === 'highlighter') && currentPointsRef.current.length > 0) {
+        const newStroke: Stroke = {
+          id: uuid(),
+          elementType: 'stroke',
+          tool: t,
+          points: currentPointsRef.current,
+          color: colorRef.current,
+          width: strokeWidthRef.current,
+        };
+        currentPointsRef.current = [];
+        pushHistoryRef.current([...elementsRef.current, newStroke]);
+      }
+    };
+
+    // { passive: false } lets us call preventDefault() to stop browser scroll/zoom
+    canvas.addEventListener('pointerdown', onDown, { passive: false });
+    canvas.addEventListener('pointermove', onMove, { passive: false });
+    canvas.addEventListener('pointerup', onUp, { passive: false });
+    canvas.addEventListener('pointerleave', onUp, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('pointerleave', onUp);
+    };
+  // Only re-attach if the canvas element itself changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Text commit ──────────────────────────────────────────────────────────
 
@@ -879,15 +911,9 @@ export const CanvasPage: React.FC<Props> = ({
           {/* Static layer — committed elements */}
           <canvas ref={staticRef} className="canvas-layer canvas-static" />
 
-          {/* Active layer — live drawing */}
-          <canvas
-            ref={activeRef}
-            className="canvas-layer canvas-active"
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-          />
+          {/* Active layer — live drawing. Events attached via native addEventListener
+              in useEffect above to bypass React synthetic event overhead. */}
+          <canvas ref={activeRef} className="canvas-layer canvas-active" />
 
           {/* Text input overlay */}
           {textPos && (
