@@ -52,8 +52,14 @@ ${transcript}`;
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
-      console.error('Gemini API error:', errText);
-      return res.status(502).json({ error: 'Gemini API request failed.' });
+      console.error('Gemini API error:', geminiRes.status, errText);
+      // Surface the real Gemini error so it shows up in the UI for debugging
+      let detail = `HTTP ${geminiRes.status}`;
+      try {
+        const errJson = JSON.parse(errText) as { error?: { message?: string } };
+        if (errJson.error?.message) detail = errJson.error.message;
+      } catch { /* not JSON */ }
+      return res.status(502).json({ error: `Gemini API error: ${detail}` });
     }
 
     const data = await geminiRes.json() as {
