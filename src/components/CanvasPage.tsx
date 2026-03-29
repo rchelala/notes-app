@@ -273,6 +273,9 @@ export const CanvasPage: React.FC<Props> = ({
   const activeCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const lastPointRef = useRef<Point | null>(null);
   const rafRef = useRef<number | null>(null);
+  const cachedRectRef = useRef<DOMRect | null>(null);
+  // Predicted points drawn speculatively — erased at start of next real frame
+  const predictedPointsRef = useRef<Point[]>([]);
 
   // ── App state
   const [tool, setTool] = useState<Tool>('pen');
@@ -318,6 +321,9 @@ export const CanvasPage: React.FC<Props> = ({
       canvas.style.width = `${cssW}px`;
       canvas.style.height = `${cssH}px`;
     }
+
+    // Invalidate cached rect after resize
+    cachedRectRef.current = null;
   }, []);
 
   useLayoutEffect(() => {
@@ -447,15 +453,23 @@ export const CanvasPage: React.FC<Props> = ({
 
   // ─── Pointer event helpers ────────────────────────────────────────────────
 
-  const getRect = () => activeRef.current!.getBoundingClientRect();
+  const getRect = (): DOMRect => {
+    if (!cachedRectRef.current) {
+      cachedRectRef.current = activeRef.current!.getBoundingClientRect();
+    }
+    return cachedRectRef.current;
+  };
 
   // ─── Pen / Highlighter drawing (incremental — never clears mid-stroke) ──────
 
   const beginActiveStroke = (pt: Point) => {
     const canvas = activeRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d')!;
+    // desynchronized: true lets the GPU composite the canvas without waiting
+    // for the main thread — cuts ~1 full frame of latency on iPad
+    const ctx = canvas.getContext('2d', { desynchronized: true })!;
     activeCtxRef.current = ctx;
+    predictedPointsRef.current = [];
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -500,6 +514,51 @@ export const CanvasPage: React.FC<Props> = ({
     ctx.stroke();
 
     lastPointRef.current = pt;
+  };
+
+  // Draw speculative predicted points in a slightly faded style.
+  // They get cleared at the start of the next real coalesced batch.
+  const drawPredictedPoints = (predicted: Point[]) => {
+    const canvas = activeRef.current;
+    const ctx = activeCtxRef.current;
+    const last = lastPointRef.current;
+    if (!canvas || !ctx || !last || predicted.length === 0) return;
+
+    ctx.save();
+    ctx.globalAlpha = (ctx.globalAlpha ?? 1) * 0.5;
+    let prev = last;
+    for (const pt of predicted) {
+      ctx.beginPath();
+      ctx.moveTo(scaleX(prev.x, canvas), scaleY(prev.y, canvas));
+      ctx.lineTo(scaleX(pt.x, canvas), scaleY(pt.y, canvas));
+      ctx.stroke();
+      prev = pt;
+    }
+    ctx.restore();
+    predictedPointsRef.current = predicted;
+  };
+
+  // Erase the previously drawn predicted segment by redrawing from the
+  // last committed point to the first real coalesced point this frame.
+  const clearPredicted = () => {
+    const canvas = activeRef.current;
+    const ctx = activeCtxRef.current;
+    if (!canvas || !ctx || predictedPointsRef.current.length === 0) return;
+
+    // Erase just the bounding box of the predicted path with a small margin
+    const pts = [lastPointRef.current!, ...predictedPointsRef.current];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      const sx = scaleX(p.x, canvas);
+      const sy = scaleY(p.y, canvas);
+      if (sx < minX) minX = sx;
+      if (sy < minY) minY = sy;
+      if (sx > maxX) maxX = sx;
+      if (sy > maxY) maxY = sy;
+    }
+    const pad = (ctx.lineWidth ?? 4) + 4;
+    ctx.clearRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
+    predictedPointsRef.current = [];
   };
 
   // ─── Shape preview ────────────────────────────────────────────────────────
@@ -587,6 +646,8 @@ export const CanvasPage: React.FC<Props> = ({
     e.preventDefault();
     (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
 
+    // Refresh rect cache at the start of each stroke (scroll may have moved canvas)
+    cachedRectRef.current = activeRef.current!.getBoundingClientRect();
     const rect = getRect();
     const pt = getPointerPoint(e, rect);
     const vx = pt.x;
@@ -653,11 +714,14 @@ export const CanvasPage: React.FC<Props> = ({
     }
 
     if (tool === 'pen' || tool === 'highlighter') {
-      // getCoalescedEvents captures all 240Hz Apple Pencil points between frames
-      const nativeEvents: PointerEvent[] =
-        (e.nativeEvent as PointerEvent).getCoalescedEvents?.() ?? [e.nativeEvent as PointerEvent];
+      const native = e.nativeEvent as PointerEvent;
 
-      for (const ne of nativeEvents) {
+      // 1. Erase last frame's speculative predicted points
+      clearPredicted();
+
+      // 2. Draw all real coalesced points (240Hz Apple Pencil data)
+      const coalesced: PointerEvent[] = native.getCoalescedEvents?.() ?? [native];
+      for (const ne of coalesced) {
         const pt: Point = {
           x: ((ne.clientX - rect.left) / rect.width) * PAGE_W,
           y: ((ne.clientY - rect.top) / rect.height) * PAGE_H,
@@ -665,6 +729,17 @@ export const CanvasPage: React.FC<Props> = ({
         };
         currentPointsRef.current.push(pt);
         continueActiveStroke(pt);
+      }
+
+      // 3. Draw predicted points for next frame — makes pencil feel instant
+      const predicted: PointerEvent[] = native.getPredictedEvents?.() ?? [];
+      if (predicted.length > 0) {
+        const predictedPts = predicted.map((ne) => ({
+          x: ((ne.clientX - rect.left) / rect.width) * PAGE_W,
+          y: ((ne.clientY - rect.top) / rect.height) * PAGE_H,
+          pressure: ne.pressure > 0 ? ne.pressure : 0.5,
+        }));
+        drawPredictedPoints(predictedPts);
       }
     }
   };
