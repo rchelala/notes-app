@@ -10,6 +10,7 @@ interface Props {
   onDelete: (id: string) => void;
   onSignOut: () => void;
   userEmail: string;
+  onOpenMeetings: () => void;
 }
 
 export const NotebookLibrary = ({
@@ -21,6 +22,7 @@ export const NotebookLibrary = ({
   onDelete,
   onSignOut,
   userEmail,
+  onOpenMeetings,
 }: Props) => {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
@@ -47,6 +49,9 @@ export const NotebookLibrary = ({
       <header className="library-header">
         <h1>My Notebooks</h1>
         <div className="library-header-right">
+          <button className="btn-ghost" onClick={onOpenMeetings}>
+            🎙 Meetings
+          </button>
           <button className="btn-primary" onClick={() => setShowCreate(true)}>
             + New Notebook
           </button>
