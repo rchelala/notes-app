@@ -1,13 +1,19 @@
 interface Props {
   onSignIn: () => void;
+  error: string | null;
 }
 
-export const Auth = ({ onSignIn }: Props) => (
+export const Auth = ({ onSignIn, error }: Props) => (
   <div className="auth-screen">
     <div className="auth-card">
       <div className="auth-logo">📓</div>
       <h1>Notes App</h1>
       <p>Your GoodNotes-style web notebook.<br />Works with Apple Pencil on iPad.</p>
+      {error && (
+        <div className="auth-error">
+          ⚠️ {error}
+        </div>
+      )}
       <button className="btn-google" onClick={onSignIn}>
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908C16.658 14.27 17.64 11.94 17.64 9.2z" fill="#4285F4"/>

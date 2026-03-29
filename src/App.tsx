@@ -13,7 +13,7 @@ type View =
   | { type: 'page'; notebook: Notebook; page: PageData };
 
 export default function App() {
-  const { user, loading: authLoading, signIn, signOut } = useAuth();
+  const { user, loading: authLoading, authError, signIn, signOut } = useAuth();
   const { notebooks, loading: nbLoading, createNotebook, renameNotebook, deleteNotebook } =
     useNotebooks(user?.uid ?? null);
   const [view, setView] = useState<View>({ type: 'library' });
@@ -34,7 +34,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <Auth onSignIn={signIn} />;
+    return <Auth onSignIn={signIn} error={authError} />;
   }
 
   // ── Notebook library ─────────────────────────────────────────────────────
@@ -48,9 +48,13 @@ export default function App() {
           if (nb) setView({ type: 'notebook', notebook: nb });
         }}
         onCreate={async (name) => {
-          const id = await createNotebook(name);
-          const nb = { ...notebooks[0], id, name }; // will update via subscription
-          setView({ type: 'library' }); // stay in library; subscription refreshes
+          try {
+            await createNotebook(name);
+          } catch (err: unknown) {
+            const e = err as { code?: string; message?: string };
+            console.error('Create notebook error:', e.code, e.message);
+            alert(`Could not create notebook: ${e.code ?? e.message}`);
+          }
         }}
         onRename={renameNotebook}
         onDelete={deleteNotebook}

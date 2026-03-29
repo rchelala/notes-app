@@ -36,6 +36,9 @@ export const useNotebooks = (userId: string | null) => {
     const unsub = onSnapshot(q, (snap) => {
       setNotebooks(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notebook)));
       setLoading(false);
+    }, (err) => {
+      console.error('Notebooks query error:', err.code, err.message);
+      setLoading(false);
     });
 
     return unsub;

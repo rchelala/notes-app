@@ -270,6 +270,9 @@ export const CanvasPage: React.FC<Props> = ({
   const staticRef = useRef<HTMLCanvasElement>(null);
   const activeRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const activeCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const lastPointRef = useRef<Point | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   // ── App state
   const [tool, setTool] = useState<Tool>('pen');
@@ -350,6 +353,9 @@ export const CanvasPage: React.FC<Props> = ({
   useEffect(() => {
     renderStatic();
   }, [renderStatic]);
+
+  // Cancel any pending RAF on unmount
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
 
   // ─── Auto-save ────────────────────────────────────────────────────────────
 
@@ -443,24 +449,57 @@ export const CanvasPage: React.FC<Props> = ({
 
   const getRect = () => activeRef.current!.getBoundingClientRect();
 
-  // ─── Pen / Highlighter drawing ────────────────────────────────────────────
+  // ─── Pen / Highlighter drawing (incremental — never clears mid-stroke) ──────
 
-  const drawActiveStroke = (pts: Point[]) => {
+  const beginActiveStroke = (pt: Point) => {
     const canvas = activeRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const ctx = canvas.getContext('2d')!;
+    activeCtxRef.current = ctx;
 
-    const tempStroke: Stroke = {
-      id: '__active__',
-      elementType: 'stroke',
-      tool: tool as 'pen' | 'highlighter',
-      points: pts,
-      color,
-      width: strokeWidth,
-    };
-    renderStroke(ctx, tempStroke, canvas);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (tool === 'highlighter') {
+      ctx.globalAlpha = HIGHLIGHTER_ALPHA;
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = scaleX(strokeWidth * 6, canvas);
+    } else {
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = scaleX(strokeWidth, canvas);
+    }
+
+    // Draw initial dot so a tap always leaves a mark
+    ctx.beginPath();
+    ctx.arc(
+      scaleX(pt.x, canvas),
+      scaleY(pt.y, canvas),
+      Math.max(1, scaleX(strokeWidth / 2, canvas)),
+      0,
+      Math.PI * 2
+    );
+    ctx.fillStyle = color;
+    ctx.globalAlpha = tool === 'highlighter' ? HIGHLIGHTER_ALPHA : 1;
+    ctx.fill();
+
+    lastPointRef.current = pt;
+  };
+
+  const continueActiveStroke = (pt: Point) => {
+    const canvas = activeRef.current;
+    const ctx = activeCtxRef.current;
+    const last = lastPointRef.current;
+    if (!canvas || !ctx || !last) return;
+
+    ctx.beginPath();
+    ctx.moveTo(scaleX(last.x, canvas), scaleY(last.y, canvas));
+    ctx.lineTo(scaleX(pt.x, canvas), scaleY(pt.y, canvas));
+    ctx.stroke();
+
+    lastPointRef.current = pt;
   };
 
   // ─── Shape preview ────────────────────────────────────────────────────────
@@ -582,7 +621,7 @@ export const CanvasPage: React.FC<Props> = ({
     // pen / highlighter
     isDrawingRef.current = true;
     currentPointsRef.current = [pt];
-    drawActiveStroke([pt]);
+    beginActiveStroke(pt);
   };
 
   // ─── Pointer move ─────────────────────────────────────────────────────────
@@ -593,29 +632,40 @@ export const CanvasPage: React.FC<Props> = ({
     e.preventDefault();
 
     const rect = getRect();
-    const pt = getPointerPoint(e, rect);
-    const vx = pt.x;
-    const vy = pt.y;
 
     if (tool === 'eraser') {
-      eraseAt(vx, vy);
+      const pt = getPointerPoint(e, rect);
+      eraseAt(pt.x, pt.y);
       return;
     }
 
     if (tool === 'shape' && shapeStartRef.current) {
-      drawActiveShape(shapeStartRef.current, { x: vx, y: vy });
+      const pt = getPointerPoint(e, rect);
+      drawActiveShape(shapeStartRef.current, { x: pt.x, y: pt.y });
       return;
     }
 
     if (tool === 'lasso') {
+      const pt = getPointerPoint(e, rect);
       lassoPointsRef.current.push(pt);
       drawActiveLasso(lassoPointsRef.current);
       return;
     }
 
     if (tool === 'pen' || tool === 'highlighter') {
-      currentPointsRef.current.push(pt);
-      drawActiveStroke(currentPointsRef.current);
+      // getCoalescedEvents captures all 240Hz Apple Pencil points between frames
+      const nativeEvents: PointerEvent[] =
+        (e.nativeEvent as PointerEvent).getCoalescedEvents?.() ?? [e.nativeEvent as PointerEvent];
+
+      for (const ne of nativeEvents) {
+        const pt: Point = {
+          x: ((ne.clientX - rect.left) / rect.width) * PAGE_W,
+          y: ((ne.clientY - rect.top) / rect.height) * PAGE_H,
+          pressure: ne.pressure > 0 ? ne.pressure : 0.5,
+        };
+        currentPointsRef.current.push(pt);
+        continueActiveStroke(pt);
+      }
     }
   };
 
