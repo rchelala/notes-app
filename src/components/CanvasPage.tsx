@@ -325,12 +325,19 @@ export const CanvasPage: React.FC<Props> = ({
     const cssW = container.offsetWidth;
     const cssH = container.offsetHeight;
 
-    for (const canvas of [staticCanvas, activeCanvas]) {
-      canvas.width = cssW * dpr;
-      canvas.height = cssH * dpr;
-      canvas.style.width = `${cssW}px`;
-      canvas.style.height = `${cssH}px`;
-    }
+    // Static canvas: full Retina resolution so committed strokes look sharp
+    staticCanvas.width = cssW * dpr;
+    staticCanvas.height = cssH * dpr;
+    staticCanvas.style.width = `${cssW}px`;
+    staticCanvas.style.height = `${cssH}px`;
+
+    // Active canvas: 1x resolution — it only holds the in-progress stroke,
+    // so Retina doesn't matter here. 1x cuts the draw-call pixel count by 75%
+    // which is the single biggest remaining latency win on iPad.
+    activeCanvas.width = cssW;
+    activeCanvas.height = cssH;
+    activeCanvas.style.width = `${cssW}px`;
+    activeCanvas.style.height = `${cssH}px`;
 
     // Invalidate cached rect after resize
     cachedRectRef.current = null;
@@ -338,6 +345,15 @@ export const CanvasPage: React.FC<Props> = ({
 
   useLayoutEffect(() => {
     resizeCanvases();
+
+    // Obtain the desynchronized context immediately after first sizing —
+    // getContext options only apply on the very first call per canvas element.
+    // Any later call to getContext('2d') ignores the options and returns the
+    // same context, so desynchronized must be set here, not inside draw functions.
+    if (activeRef.current) {
+      activeCtxRef.current = activeRef.current.getContext('2d', { desynchronized: true });
+    }
+
     const ro = new ResizeObserver(resizeCanvases);
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
@@ -456,9 +472,9 @@ export const CanvasPage: React.FC<Props> = ({
 
   const clearActive = () => {
     const c = activeRef.current;
-    if (!c) return;
-    const ctx = c.getContext('2d');
-    ctx?.clearRect(0, 0, c.width, c.height);
+    const ctx = activeCtxRef.current;
+    if (!c || !ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
   };
 
   // ─── Pointer event helpers ────────────────────────────────────────────────
@@ -474,11 +490,8 @@ export const CanvasPage: React.FC<Props> = ({
 
   const beginActiveStroke = (pt: Point) => {
     const canvas = activeRef.current;
-    if (!canvas) return;
-    // desynchronized: true lets the GPU composite the canvas without waiting
-    // for the main thread — cuts ~1 full frame of latency on iPad
-    const ctx = canvas.getContext('2d', { desynchronized: true })!;
-    activeCtxRef.current = ctx;
+    const ctx = activeCtxRef.current;
+    if (!canvas || !ctx) return;
     predictedPointsRef.current = [];
 
     const t = toolRef.current;
@@ -579,9 +592,8 @@ export const CanvasPage: React.FC<Props> = ({
 
   const drawActiveShape = (start: { x: number; y: number }, end: { x: number; y: number }) => {
     const canvas = activeRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const ctx = activeCtxRef.current;
+    if (!canvas || !ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const tempShape: ShapeElement = {
@@ -602,9 +614,8 @@ export const CanvasPage: React.FC<Props> = ({
 
   const drawActiveLasso = (pts: Point[]) => {
     const canvas = activeRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const ctx = activeCtxRef.current;
+    if (!canvas || !ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (pts.length < 2) return;
 
