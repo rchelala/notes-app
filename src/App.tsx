@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Auth } from './components/Auth';
 import { NotebookLibrary } from './components/NotebookLibrary';
 import { NotebookView } from './components/NotebookView';
@@ -18,6 +18,21 @@ type View =
   | { type: 'meeting-detail'; meeting: Meeting };
 
 export default function App() {
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('theme') as 'dark' | 'light') ?? 'dark';
+  });
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+
   const { user, loading: authLoading, authError, signIn, signOut } = useAuth();
   const { notebooks, loading: nbLoading, createNotebook, renameNotebook, deleteNotebook } =
     useNotebooks(user?.uid ?? null);
@@ -31,39 +46,48 @@ export default function App() {
   const { pages, loading: pagesLoading, addPage, savePage, deletePage } =
     usePages(activeNotebookId);
 
+  const themeBtn = (
+    <button className="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
+      {theme === 'dark' ? '☀' : '☾'}
+    </button>
+  );
+
   if (authLoading) {
     return <div className="splash"><div className="splash-spinner" /></div>;
   }
 
   if (!user) {
-    return <Auth onSignIn={signIn} error={authError} />;
+    return <>{<Auth onSignIn={signIn} error={authError} />}{themeBtn}</>;
   }
 
   // ── Notebook library ─────────────────────────────────────────────────────
   if (view.type === 'library') {
     return (
-      <NotebookLibrary
-        notebooks={notebooks}
-        loading={nbLoading}
-        onOpen={(id) => {
-          const nb = notebooks.find((n) => n.id === id);
-          if (nb) setView({ type: 'notebook', notebook: nb });
-        }}
-        onCreate={async (name) => {
-          try {
-            await createNotebook(name);
-          } catch (err: unknown) {
-            const e = err as { code?: string; message?: string };
-            console.error('Create notebook error:', e.code, e.message);
-            alert(`Could not create notebook: ${e.code ?? e.message}`);
-          }
-        }}
-        onRename={renameNotebook}
-        onDelete={deleteNotebook}
-        onSignOut={signOut}
-        userEmail={user.email ?? ''}
-        onOpenMeetings={() => setView({ type: 'meetings' })}
-      />
+      <>
+        <NotebookLibrary
+          notebooks={notebooks}
+          loading={nbLoading}
+          onOpen={(id) => {
+            const nb = notebooks.find((n) => n.id === id);
+            if (nb) setView({ type: 'notebook', notebook: nb });
+          }}
+          onCreate={async (name) => {
+            try {
+              await createNotebook(name);
+            } catch (err: unknown) {
+              const e = err as { code?: string; message?: string };
+              console.error('Create notebook error:', e.code, e.message);
+              alert(`Could not create notebook: ${e.code ?? e.message}`);
+            }
+          }}
+          onRename={renameNotebook}
+          onDelete={deleteNotebook}
+          onSignOut={signOut}
+          userEmail={user.email ?? ''}
+          onOpenMeetings={() => setView({ type: 'meetings' })}
+        />
+        {themeBtn}
+      </>
     );
   }
 
@@ -72,20 +96,23 @@ export default function App() {
     const nb = view.notebook;
     const freshNb = notebooks.find((n) => n.id === nb.id) ?? nb;
     return (
-      <NotebookView
-        notebookName={freshNb.name}
-        pages={pages}
-        loading={pagesLoading}
-        onOpenPage={(page) => setView({ type: 'page', notebook: freshNb, page })}
-        onAddPage={async () => {
-          const nextNum = (pages[pages.length - 1]?.pageNumber ?? 0) + 1;
-          await addPage(freshNb.id, nextNum);
-        }}
-        onDeletePage={async (pageId) => {
-          await deletePage(freshNb.id, pageId);
-        }}
-        onBack={() => setView({ type: 'library' })}
-      />
+      <>
+        <NotebookView
+          notebookName={freshNb.name}
+          pages={pages}
+          loading={pagesLoading}
+          onOpenPage={(page) => setView({ type: 'page', notebook: freshNb, page })}
+          onAddPage={async () => {
+            const nextNum = (pages[pages.length - 1]?.pageNumber ?? 0) + 1;
+            await addPage(freshNb.id, nextNum);
+          }}
+          onDeletePage={async (pageId) => {
+            await deletePage(freshNb.id, pageId);
+          }}
+          onBack={() => setView({ type: 'library' })}
+        />
+        {themeBtn}
+      </>
     );
   }
 
@@ -95,43 +122,52 @@ export default function App() {
     const freshNb = notebooks.find((n) => n.id === notebook.id) ?? notebook;
     const freshPage = pages.find((p) => p.id === page.id) ?? page;
     return (
-      <CanvasPage
-        key={freshPage.id}
-        pageData={freshPage}
-        notebookName={freshNb.name}
-        onSave={async (elements: CanvasElement[], thumbnail: string) => {
-          await savePage(freshNb.id, freshPage.id, elements, thumbnail);
-        }}
-        onBack={() => setView({ type: 'notebook', notebook: freshNb })}
-      />
+      <>
+        <CanvasPage
+          key={freshPage.id}
+          pageData={freshPage}
+          notebookName={freshNb.name}
+          onSave={async (elements: CanvasElement[], thumbnail: string) => {
+            await savePage(freshNb.id, freshPage.id, elements, thumbnail);
+          }}
+          onBack={() => setView({ type: 'notebook', notebook: freshNb })}
+        />
+        {themeBtn}
+      </>
     );
   }
 
   // ── Meetings list ─────────────────────────────────────────────────────────
   if (view.type === 'meetings') {
     return (
-      <MeetingsLibrary
-        meetings={meetings}
-        loading={meetingsLoading}
-        onOpen={(meeting) => setView({ type: 'meeting-detail', meeting })}
-        onNewMeeting={() => setView({ type: 'meeting-new' })}
-        onDelete={deleteMeeting}
-        onBack={() => setView({ type: 'library' })}
-      />
+      <>
+        <MeetingsLibrary
+          meetings={meetings}
+          loading={meetingsLoading}
+          onOpen={(meeting) => setView({ type: 'meeting-detail', meeting })}
+          onNewMeeting={() => setView({ type: 'meeting-new' })}
+          onDelete={deleteMeeting}
+          onBack={() => setView({ type: 'library' })}
+        />
+        {themeBtn}
+      </>
     );
   }
 
   // ── New meeting recording ─────────────────────────────────────────────────
   if (view.type === 'meeting-new') {
     return (
-      <MeetingRecorder
-        userId={user.uid}
-        onSave={async (title, transcript, durationSeconds, summary) => {
-          await createMeeting(user.uid, title, transcript, durationSeconds, summary);
-          setView({ type: 'meetings' });
-        }}
-        onBack={() => setView({ type: 'meetings' })}
-      />
+      <>
+        <MeetingRecorder
+          userId={user.uid}
+          onSave={async (title, transcript, durationSeconds, summary) => {
+            await createMeeting(user.uid, title, transcript, durationSeconds, summary);
+            setView({ type: 'meetings' });
+          }}
+          onBack={() => setView({ type: 'meetings' })}
+        />
+        {themeBtn}
+      </>
     );
   }
 
@@ -140,15 +176,18 @@ export default function App() {
     const { meeting } = view;
     const freshMeeting = meetings.find((m) => m.id === meeting.id) ?? meeting;
     return (
-      <MeetingRecorder
-        userId={user.uid}
-        existingMeeting={freshMeeting}
-        onSave={async (_title, _transcript, _duration, summary) => {
-          if (summary) await updateMeetingSummary(freshMeeting.id, summary as MeetingSummary);
-          setView({ type: 'meetings' });
-        }}
-        onBack={() => setView({ type: 'meetings' })}
-      />
+      <>
+        <MeetingRecorder
+          userId={user.uid}
+          existingMeeting={freshMeeting}
+          onSave={async (_title, _transcript, _duration, summary) => {
+            if (summary) await updateMeetingSummary(freshMeeting.id, summary as MeetingSummary);
+            setView({ type: 'meetings' });
+          }}
+          onBack={() => setView({ type: 'meetings' })}
+        />
+        {themeBtn}
+      </>
     );
   }
 

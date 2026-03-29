@@ -49,6 +49,8 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
   const [summary, setSummary] = useState<MeetingSummary | null>(existingMeeting?.summary ?? null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [quickResult, setQuickResult] = useState<{ label: string; items: string[] } | null>(null);
+  const [quickLoading, setQuickLoading] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [elapsed, setElapsed] = useState(existingMeeting?.durationSeconds ?? 0);
   const [speechSupported] = useState(
@@ -156,6 +158,7 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
 
     setAnalyzing(true);
     setAnalyzeError(null);
+    setQuickResult(null);
 
     try {
       const res = await fetch('/api/summarize', {
@@ -175,6 +178,41 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
       setAnalyzeError((err as Error).message ?? 'Failed to analyze. Try again.');
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const QUICK_PROMPTS = [
+    { key: 'actionable', label: 'Actionable Bullet Points' },
+    { key: 'decisions',  label: 'Decisions Made' },
+    { key: 'takeaways',  label: 'Key Takeaways' },
+    { key: 'owners',     label: 'Action Item Owners' },
+  ] as const;
+
+  const handleQuickPrompt = async (promptType: string, label: string) => {
+    const text = transcriptRef.current.trim();
+    if (!text) return;
+
+    setQuickLoading(promptType);
+    setAnalyzeError(null);
+
+    try {
+      const res = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: text, promptType }),
+      });
+
+      const data = await res.json() as { items?: string[]; error?: string };
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error ?? 'Unknown error');
+      }
+
+      setQuickResult({ label, items: data.items ?? [] });
+    } catch (err: unknown) {
+      setAnalyzeError((err as Error).message ?? 'Failed to analyze. Try again.');
+    } finally {
+      setQuickLoading(null);
     }
   };
 
@@ -324,6 +362,31 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
                         <span key={i} className="topic-chip">{t}</span>
                       ))}
                     </div>
+                  </section>
+                )}
+
+                <section className="summary-section quick-prompts-section">
+                  <h3>Ask AI</h3>
+                  <div className="quick-prompt-btns">
+                    {QUICK_PROMPTS.map(({ key, label }) => (
+                      <button
+                        key={key}
+                        className={`quick-prompt-btn${quickLoading === key ? ' loading' : ''}${quickResult?.label === label && !quickLoading ? ' active' : ''}`}
+                        onClick={() => handleQuickPrompt(key, label)}
+                        disabled={!!quickLoading || recordingState === 'recording'}
+                      >
+                        {quickLoading === key ? 'Thinking…' : label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                {quickResult && !quickLoading && (
+                  <section className="summary-section quick-result-section">
+                    <h3>{quickResult.label}</h3>
+                    <ul>
+                      {quickResult.items.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
                   </section>
                 )}
               </div>
