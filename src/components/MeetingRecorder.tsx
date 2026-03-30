@@ -52,6 +52,7 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
   const [quickResult, setQuickResult] = useState<{ label: string; items: string[] } | null>(null);
   const [quickLoading, setQuickLoading] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(existingMeeting?.durationSeconds ?? 0);
   const [speechSupported] = useState(
     () => !!(window.SpeechRecognition || window.webkitSpeechRecognition)
@@ -219,9 +220,11 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
   const handleSave = async () => {
     const finalTitle = title.trim() || `Meeting ${new Date().toLocaleDateString()}`;
     setSaving(true);
+    setSaveError(null);
     try {
       await onSave(finalTitle, transcript, elapsed, summary);
-    } finally {
+    } catch (err: unknown) {
+      setSaveError((err as Error).message ?? 'Failed to save. Try again.');
       setSaving(false);
     }
   };
@@ -247,13 +250,25 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
             onChange={(e) => setTitle(e.target.value)}
           />
         </div>
-        <button
-          className="btn-primary"
-          onClick={handleSave}
-          disabled={saving || !hasTranscript}
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+          <button
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={saving || !hasTranscript || recordingState === 'recording'}
+            title={
+              recordingState === 'recording'
+                ? 'Stop recording before saving'
+                : !hasTranscript
+                ? 'Record something first'
+                : 'Save meeting to your list'
+            }
+          >
+            {saving ? 'Saving…' : 'Save & Close'}
+          </button>
+          {saveError && (
+            <span style={{ fontSize: 12, color: 'var(--danger)' }}>⚠️ {saveError}</span>
+          )}
+        </div>
       </header>
 
       <div className="meeting-body">
