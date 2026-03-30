@@ -19,3 +19,7 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local installer files — not part of the app
+vb-cable/
+vb-voicemeeter/
