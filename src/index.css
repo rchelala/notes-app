@@ -539,11 +539,12 @@ button:active:not(:disabled) {
   position: relative;
   width: 100%;
   max-width: 900px;
-  aspect-ratio: 1000 / 1414;
+  /* Height is set dynamically by resizeCanvases() based on PAGE_H/PAGE_W ratio */
   border-radius: 3px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.4);
   overflow: hidden;
   flex-shrink: 0;
+  touch-action: none;
 }
 
 .canvas-layer {
@@ -615,10 +616,11 @@ button:active:not(:disabled) {
 }
 .tool-btn:hover { background: var(--border-strong); color: var(--text); }
 .tool-btn.active {
-  background: var(--primary-dim);
-  color: var(--primary);
-  box-shadow: inset 0 0 0 1.5px rgba(99,102,241,0.4);
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(99,102,241,0.5);
 }
+.tool-btn.active:hover { background: var(--primary-hover); }
 .tool-btn.small { width: 28px; height: 28px; font-size: 13px; }
 
 .width-btn {
@@ -631,7 +633,8 @@ button:active:not(:disabled) {
   transition: background 0.12s;
 }
 .width-btn:hover { background: var(--border-strong); }
-.width-btn.active { background: var(--primary-dim); }
+.width-btn.active { background: var(--primary); }
+.width-btn.active .width-dot { background: #fff; }
 .width-dot {
   border-radius: 50%;
   background: var(--text);

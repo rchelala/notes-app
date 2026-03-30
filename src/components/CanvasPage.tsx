@@ -23,7 +23,7 @@ import { exportPageAsPDF } from '../lib/pdfExport';
 
 /** Virtual page size — all stored coords are in this space */
 const PAGE_W = 1000;
-const PAGE_H = 1414; // ~A4 portrait ratio
+const PAGE_H = 8000; // Continuous scroll — ~5.6× A4 height
 
 const RULED_LINE_SPACING = 36; // px in virtual space
 const RULED_LINE_COLOR = '#c8d6e5';
@@ -34,23 +34,6 @@ const HIGHLIGHTER_ALPHA = 0.35;
 const ERASER_RADIUS = 20; // virtual px
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const toVirtual = (
-  clientX: number,
-  clientY: number,
-  rect: DOMRect
-): { x: number; y: number } => ({
-  x: ((clientX - rect.left) / rect.width) * PAGE_W,
-  y: ((clientY - rect.top) / rect.height) * PAGE_H,
-});
-
-const getPointerPoint = (
-  e: React.PointerEvent<HTMLCanvasElement>,
-  rect: DOMRect
-): Point => {
-  const { x, y } = toVirtual(e.clientX, e.clientY, rect);
-  return { x, y, pressure: e.pressure > 0 ? e.pressure : 0.5 };
-};
 
 const dist = (ax: number, ay: number, bx: number, by: number) =>
   Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
@@ -128,25 +111,58 @@ const renderStroke = (
     ctx.lineWidth = scaleX(stroke.width, canvas);
   }
 
-  ctx.beginPath();
-  ctx.moveTo(scaleX(pts[0].x, canvas), scaleY(pts[0].y, canvas));
-
   if (pts.length === 1) {
-    // Single dot
-    ctx.arc(scaleX(pts[0].x, canvas), scaleY(pts[0].y, canvas), scaleX(stroke.width / 2, canvas), 0, Math.PI * 2);
+    const w = stroke.tool === 'highlighter' ? stroke.width * 6 : stroke.width;
+    ctx.lineWidth = scaleX(w, canvas);
+    ctx.beginPath();
+    ctx.arc(scaleX(pts[0].x, canvas), scaleY(pts[0].y, canvas), scaleX(w / 2, canvas), 0, Math.PI * 2);
+    ctx.fillStyle = stroke.color;
+    ctx.globalAlpha = stroke.tool === 'highlighter' ? HIGHLIGHTER_ALPHA : 1;
     ctx.fill();
-  } else {
-    for (let i = 1; i < pts.length - 1; i++) {
-      const mx = (pts[i].x + pts[i + 1].x) / 2;
-      const my = (pts[i].y + pts[i + 1].y) / 2;
-      ctx.quadraticCurveTo(
-        scaleX(pts[i].x, canvas),
-        scaleY(pts[i].y, canvas),
-        scaleX(mx, canvas),
-        scaleY(my, canvas)
-      );
+    ctx.restore();
+    return;
+  }
+
+  // Render each segment individually so pressure can vary lineWidth per point.
+  // Uses quadratic midpoint technique: curve passes through midpoints,
+  // actual sample points act as bezier control points — gives smooth curves.
+  const isHL = stroke.tool === 'highlighter';
+  let prevMid: { x: number; y: number } | null = null;
+
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i];
+    const p1 = pts[i + 1];
+    const midX = (p0.x + p1.x) / 2;
+    const midY = (p0.y + p1.y) / 2;
+
+    // Scale width by pressure — only for pen, not highlighter
+    const pressure = isHL ? 0.5 : Math.max(0.05, p0.pressure ?? 0.5);
+    const baseW = isHL ? stroke.width * 6 : stroke.width;
+    ctx.lineWidth = scaleX(baseW * (0.3 + pressure * 1.4), canvas);
+
+    const fromX = prevMid ? prevMid.x : p0.x;
+    const fromY = prevMid ? prevMid.y : p0.y;
+
+    ctx.beginPath();
+    ctx.moveTo(scaleX(fromX, canvas), scaleY(fromY, canvas));
+    if (prevMid !== null) {
+      ctx.quadraticCurveTo(scaleX(p0.x, canvas), scaleY(p0.y, canvas), scaleX(midX, canvas), scaleY(midY, canvas));
+    } else {
+      ctx.lineTo(scaleX(midX, canvas), scaleY(midY, canvas));
     }
+    ctx.stroke();
+
+    prevMid = { x: midX, y: midY };
+  }
+
+  // Final segment: midpoint → last point
+  if (prevMid) {
     const last = pts[pts.length - 1];
+    const pressure = isHL ? 0.5 : Math.max(0.05, last.pressure ?? 0.5);
+    const baseW = isHL ? stroke.width * 6 : stroke.width;
+    ctx.lineWidth = scaleX(baseW * (0.3 + pressure * 1.4), canvas);
+    ctx.beginPath();
+    ctx.moveTo(scaleX(prevMid.x, canvas), scaleY(prevMid.y, canvas));
     ctx.lineTo(scaleX(last.x, canvas), scaleY(last.y, canvas));
     ctx.stroke();
   }
@@ -276,6 +292,13 @@ export const CanvasPage: React.FC<Props> = ({
   const cachedRectRef = useRef<DOMRect | null>(null);
   // Predicted points drawn speculatively — erased at start of next real frame
   const predictedPointsRef = useRef<Point[]>([]);
+  // Last midpoint drawn on active canvas — needed for seamless smooth joins
+  const lastMidRef = useRef<Point | null>(null);
+  // Keep selectedIds accessible in native handlers without stale closure
+  const selectedIdsRef = useRef<Set<string>>(new Set());
+  // Eraser batching: snapshot elements at stroke start, accumulate hit IDs
+  const eraseStartElsRef = useRef<CanvasElement[]>([]);
+  const erasedIdsRef = useRef<Set<string>>(new Set());
 
   // ── App state (also mirrored in refs so native event handlers always see current values)
   const [tool, setToolState] = useState<Tool>('pen');
@@ -323,7 +346,9 @@ export const CanvasPage: React.FC<Props> = ({
 
     const dpr = window.devicePixelRatio || 1;
     const cssW = container.offsetWidth;
-    const cssH = container.offsetHeight;
+    // Continuous scroll: derive height from virtual aspect ratio, not CSS
+    const cssH = Math.round((PAGE_H / PAGE_W) * cssW);
+    container.style.height = `${cssH}px`;
 
     // Static canvas: full Retina resolution so committed strokes look sharp
     staticCanvas.width = cssW * dpr;
@@ -477,13 +502,22 @@ export const CanvasPage: React.FC<Props> = ({
     ctx.clearRect(0, 0, c.width, c.height);
   };
 
-  // ─── Pointer event helpers ────────────────────────────────────────────────
+  // ─── Imperative static render (used by eraser during stroke) ────────────────
+  // Renders directly to the static canvas using current ref values — no state.
 
-  const getRect = (): DOMRect => {
-    if (!cachedRectRef.current) {
-      cachedRectRef.current = activeRef.current!.getBoundingClientRect();
+  const imperativeRenderStatic = (excludeIds?: Set<string>) => {
+    const canvas = staticRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawRuledLines(ctx, canvas.width, canvas.height);
+    for (const el of elementsRef.current) {
+      if (excludeIds?.has(el.id)) continue;
+      renderElement(ctx, el, canvas, selectedIdsRef.current.has(el.id));
     }
-    return cachedRectRef.current;
   };
 
   // ─── Pen / Highlighter drawing (incremental — never clears mid-stroke) ──────
@@ -514,19 +548,15 @@ export const CanvasPage: React.FC<Props> = ({
     }
 
     // Draw initial dot so a tap always leaves a mark
+    const dotR = Math.max(1, scaleX(w / 2, canvas));
     ctx.beginPath();
-    ctx.arc(
-      scaleX(pt.x, canvas),
-      scaleY(pt.y, canvas),
-      Math.max(1, scaleX(w / 2, canvas)),
-      0,
-      Math.PI * 2
-    );
+    ctx.arc(scaleX(pt.x, canvas), scaleY(pt.y, canvas), dotR, 0, Math.PI * 2);
     ctx.fillStyle = c;
     ctx.globalAlpha = t === 'highlighter' ? HIGHLIGHTER_ALPHA : 1;
     ctx.fill();
 
     lastPointRef.current = pt;
+    lastMidRef.current = null;
   };
 
   const continueActiveStroke = (pt: Point) => {
@@ -535,11 +565,39 @@ export const CanvasPage: React.FC<Props> = ({
     const last = lastPointRef.current;
     if (!canvas || !ctx || !last) return;
 
+    const t = toolRef.current;
+    const isHL = t === 'highlighter';
+
+    // Midpoint between last and current — the bezier endpoint for smooth join
+    const mid: Point = {
+      x: (last.x + pt.x) / 2,
+      y: (last.y + pt.y) / 2,
+      pressure: (last.pressure + pt.pressure) / 2,
+    };
+
+    // Pressure-scaled width for this segment (pen only; highlighter stays fixed)
+    const pressure = isHL ? 0.5 : Math.max(0.05, last.pressure ?? 0.5);
+    const baseW = strokeWidthRef.current;
+    ctx.lineWidth = isHL
+      ? scaleX(baseW * 6, canvas)
+      : scaleX(baseW * (0.3 + pressure * 1.4), canvas);
+
+    const from = lastMidRef.current ?? last;
+
     ctx.beginPath();
-    ctx.moveTo(scaleX(last.x, canvas), scaleY(last.y, canvas));
-    ctx.lineTo(scaleX(pt.x, canvas), scaleY(pt.y, canvas));
+    ctx.moveTo(scaleX(from.x, canvas), scaleY(from.y, canvas));
+    if (lastMidRef.current !== null) {
+      // Smooth quadratic: from lastMid → through last (control) → to mid
+      ctx.quadraticCurveTo(
+        scaleX(last.x, canvas), scaleY(last.y, canvas),
+        scaleX(mid.x, canvas),  scaleY(mid.y, canvas),
+      );
+    } else {
+      ctx.lineTo(scaleX(mid.x, canvas), scaleY(mid.y, canvas));
+    }
     ctx.stroke();
 
+    lastMidRef.current = mid;
     lastPointRef.current = pt;
   };
 
@@ -632,37 +690,6 @@ export const CanvasPage: React.FC<Props> = ({
     ctx.restore();
   };
 
-  // ─── Eraser ───────────────────────────────────────────────────────────────
-
-  const eraseAt = useCallback(
-    (vx: number, vy: number) => {
-      const hit = elements.filter((el) => {
-        if (el.elementType === 'stroke') {
-          return el.points.some((p) => dist(p.x, p.y, vx, vy) < ERASER_RADIUS);
-        }
-        if (el.elementType === 'shape') {
-          return dist(
-            (el.x1 + el.x2) / 2,
-            (el.y1 + el.y2) / 2,
-            vx,
-            vy
-          ) < ERASER_RADIUS * 3;
-        }
-        if (el.elementType === 'text') {
-          return dist(el.x, el.y, vx, vy) < ERASER_RADIUS * 4;
-        }
-        return false;
-      });
-
-      if (hit.length > 0) {
-        const hitIds = new Set(hit.map((e) => e.id));
-        const newEls = elements.filter((e) => !hitIds.has(e.id));
-        pushHistory(newEls);
-      }
-    },
-    [elements, pushHistory]
-  );
-
   // ─── Native pointer handlers (bypass React event system for zero extra latency) ──
 
   // We keep a stable ref to elements/pushHistory so native handlers can access current values
@@ -670,12 +697,14 @@ export const CanvasPage: React.FC<Props> = ({
   useEffect(() => { elementsRef.current = elements; }, [elements]);
   const pushHistoryRef = useRef(pushHistory);
   useEffect(() => { pushHistoryRef.current = pushHistory; }, [pushHistory]);
+  useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
 
   useEffect(() => {
     const canvas = activeRef.current;
     if (!canvas) return;
 
     const onDown = (e: PointerEvent) => {
+      // Fix #3: pen-only on iPad — blocks both touch (palm) and mouse
       if (e.pointerType === 'touch') return;
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
@@ -688,8 +717,19 @@ export const CanvasPage: React.FC<Props> = ({
       const t = toolRef.current;
 
       if (t === 'eraser') {
+        // Fix #4: snapshot elements at stroke start; accumulate IDs, push once on up
+        eraseStartElsRef.current = [...elementsRef.current];
+        erasedIdsRef.current = new Set();
         isDrawingRef.current = true;
-        eraseAt(vx, vy);
+        // Hit-test against snapshot
+        const hit = eraseStartElsRef.current.filter((el) => {
+          if (el.elementType === 'stroke') return el.points.some((p) => dist(p.x, p.y, vx, vy) < ERASER_RADIUS);
+          if (el.elementType === 'shape') return dist((el.x1 + el.x2) / 2, (el.y1 + el.y2) / 2, vx, vy) < ERASER_RADIUS * 3;
+          if (el.elementType === 'text') return dist(el.x, el.y, vx, vy) < ERASER_RADIUS * 4;
+          return false;
+        });
+        hit.forEach((el) => erasedIdsRef.current.add(el.id));
+        if (hit.length > 0) imperativeRenderStatic(erasedIdsRef.current);
         return;
       }
       if (t === 'text') {
@@ -726,7 +766,18 @@ export const CanvasPage: React.FC<Props> = ({
       if (t === 'eraser') {
         const vx = ((e.clientX - rect.left) / rect.width) * PAGE_W;
         const vy = ((e.clientY - rect.top) / rect.height) * PAGE_H;
-        eraseAt(vx, vy);
+        // Hit-test against the *original* snapshot so IDs don't vanish mid-stroke
+        const hit = eraseStartElsRef.current.filter((el) => {
+          if (erasedIdsRef.current.has(el.id)) return false; // already marked
+          if (el.elementType === 'stroke') return el.points.some((p) => dist(p.x, p.y, vx, vy) < ERASER_RADIUS);
+          if (el.elementType === 'shape') return dist((el.x1 + el.x2) / 2, (el.y1 + el.y2) / 2, vx, vy) < ERASER_RADIUS * 3;
+          if (el.elementType === 'text') return dist(el.x, el.y, vx, vy) < ERASER_RADIUS * 4;
+          return false;
+        });
+        if (hit.length > 0) {
+          hit.forEach((el) => erasedIdsRef.current.add(el.id));
+          imperativeRenderStatic(erasedIdsRef.current);
+        }
         return;
       }
       if (t === 'shape' && shapeStartRef.current) {
@@ -786,6 +837,16 @@ export const CanvasPage: React.FC<Props> = ({
       const pt: Point = { x: vx, y: vy, pressure: e.pressure > 0 ? e.pressure : 0.5 };
       const t = toolRef.current;
 
+      if (t === 'eraser') {
+        // Fix #4: single history push for the entire erase stroke
+        if (erasedIdsRef.current.size > 0) {
+          const newEls = eraseStartElsRef.current.filter((el) => !erasedIdsRef.current.has(el.id));
+          erasedIdsRef.current = new Set();
+          eraseStartElsRef.current = [];
+          pushHistoryRef.current(newEls);
+        }
+        return;
+      }
       if (t === 'shape' && shapeStartRef.current) {
         const newShape: ShapeElement = {
           id: uuid(),
