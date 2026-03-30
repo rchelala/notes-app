@@ -544,7 +544,8 @@ button:active:not(:disabled) {
   box-shadow: 0 4px 24px rgba(0,0,0,0.4);
   overflow: hidden;
   flex-shrink: 0;
-  touch-action: none;
+  /* pan-y: let fingers scroll the page; pen drawing is blocked via pointerType check */
+  touch-action: pan-y;
 }
 
 .canvas-layer {
@@ -553,7 +554,7 @@ button:active:not(:disabled) {
   width: 100%; height: 100%;
 }
 .canvas-static { z-index: 1; }
-.canvas-active { z-index: 2; touch-action: none; }
+.canvas-active { z-index: 2; touch-action: pan-y; }
 
 /* Text overlay input */
 .text-overlay-input {
@@ -589,6 +590,7 @@ button:active:not(:disabled) {
   gap: 2px;
   padding: 0 8px;
   border-right: 1px solid var(--border);
+  position: relative; /* anchor for color-picker-anchor absolute positioning */
 }
 .toolbar-section:last-child { border-right: none; }
 

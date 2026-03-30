@@ -344,21 +344,21 @@ export const CanvasPage: React.FC<Props> = ({
     const activeCanvas = activeRef.current;
     if (!container || !staticCanvas || !activeCanvas) return;
 
-    const dpr = window.devicePixelRatio || 1;
     const cssW = container.offsetWidth;
+    if (cssW < 10) return; // skip before layout is ready
     // Continuous scroll: derive height from virtual aspect ratio, not CSS
     const cssH = Math.round((PAGE_H / PAGE_W) * cssW);
     container.style.height = `${cssH}px`;
 
-    // Static canvas: full Retina resolution so committed strokes look sharp
-    staticCanvas.width = cssW * dpr;
-    staticCanvas.height = cssH * dpr;
+    // Both canvases at 1× pixel ratio.
+    // Using full DPR on a continuous page (cssH ~6400 px) exceeds iOS Safari's
+    // ~16.7 MP canvas limit at 2× DPR, causing the canvas to silently go black.
+    // 1× keeps pixels well within the limit and matches the active canvas strategy.
+    staticCanvas.width = cssW;
+    staticCanvas.height = cssH;
     staticCanvas.style.width = `${cssW}px`;
     staticCanvas.style.height = `${cssH}px`;
 
-    // Active canvas: 1x resolution — it only holds the in-progress stroke,
-    // so Retina doesn't matter here. 1x cuts the draw-call pixel count by 75%
-    // which is the single biggest remaining latency win on iPad.
     activeCanvas.width = cssW;
     activeCanvas.height = cssH;
     activeCanvas.style.width = `${cssW}px`;
