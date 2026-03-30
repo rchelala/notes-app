@@ -3,10 +3,11 @@ import { Meeting } from '../types';
 interface Props {
   meetings: Meeting[];
   loading: boolean;
+  userEmail: string;
   onOpen: (meeting: Meeting) => void;
   onNewMeeting: () => void;
   onDelete: (id: string) => void;
-  onBack: () => void;
+  onSignOut: () => void;
 }
 
 const formatDuration = (seconds: number) => {
@@ -22,17 +23,20 @@ const formatDate = (ts: number) =>
   });
 
 export const MeetingsLibrary = ({
-  meetings, loading, onOpen, onNewMeeting, onDelete, onBack,
+  meetings, loading, userEmail, onOpen, onNewMeeting, onDelete, onSignOut,
 }: Props) => (
   <div className="meetings-library">
     <header className="library-header">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button className="btn-back" onClick={onBack}>← Notebooks</button>
-        <h1>Meetings</h1>
+      <h1>Meetings</h1>
+      <div className="library-header-right">
+        <button className="btn-primary" onClick={onNewMeeting}>
+          + New Recording
+        </button>
+        <div className="user-badge">
+          <span className="user-email">{userEmail}</span>
+          <button className="btn-ghost" onClick={onSignOut}>Sign out</button>
+        </div>
       </div>
-      <button className="btn-primary" onClick={onNewMeeting}>
-        🎙 New Recording
-      </button>
     </header>
 
     {loading ? (

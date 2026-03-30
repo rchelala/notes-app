@@ -4,7 +4,8 @@
       "Bash(npm install:*)",
       "Bash(gh repo:*)",
       "Bash(where git:*)",
-      "Bash(git --version)"
+      "Bash(git --version)",
+      "Bash(npx tsc:*)"
     ]
   }
 }
