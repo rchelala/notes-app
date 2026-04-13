@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Meeting, MeetingSummary } from '../types';
+import { useDualStreamTranscription } from '../hooks/useDualStreamTranscription';
 
 interface Props {
   userId: string;
@@ -13,33 +14,9 @@ interface Props {
   onBack: () => void;
 }
 
-type RecordingState = 'idle' | 'recording' | 'stopped';
+type RecordingState = 'idle' | 'starting' | 'recording' | 'stopped';
 
-// Extend Window for webkit prefix and polyfill missing lib types
-interface ISpeechRecognitionEvent {
-  resultIndex: number;
-  results: { isFinal: boolean; [index: number]: { transcript: string } }[];
-}
-interface ISpeechRecognitionError { error: string; }
-interface ISpeechRecognition {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  maxAlternatives: number;
-  onresult: ((e: ISpeechRecognitionEvent) => void) | null;
-  onend: (() => void) | null;
-  onerror: ((e: ISpeechRecognitionError) => void) | null;
-  start(): void;
-  stop(): void;
-}
-declare global {
-  interface Window {
-    SpeechRecognition: new () => ISpeechRecognition;
-    webkitSpeechRecognition: new () => ISpeechRecognition;
-  }
-}
-
-export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Props) => {
+export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onBack }: Props) => {
   const [recordingState, setRecordingState] = useState<RecordingState>(
     existingMeeting ? 'stopped' : 'idle'
   );
@@ -54,16 +31,25 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(existingMeeting?.durationSeconds ?? 0);
-  const [speechSupported] = useState(
-    () => !!(window.SpeechRecognition || window.webkitSpeechRecognition)
-  );
 
-  const recognitionRef = useRef<ISpeechRecognition | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
   const transcriptRef = useRef(transcript);
   transcriptRef.current = transcript;
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleFinalText = useCallback((text: string) => {
+    setTranscript(prev => prev + text);
+  }, []);
+
+  const handleInterimText = useCallback((text: string) => {
+    setInterimText(text);
+  }, []);
+
+  const { start, stop, displayDenied, captureError } = useDualStreamTranscription({
+    onFinalText: handleFinalText,
+    onInterimText: handleInterimText,
+  });
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -75,80 +61,38 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      recognitionRef.current?.stop();
+      stop();
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, []);
+  }, [stop]);
 
-  const startRecording = useCallback(() => {
-    if (!speechSupported) return;
-
-    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognitionCtor();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    recognition.maxAlternatives = 1;
-
-    recognition.onresult = (event) => {
-      let interim = '';
-      let finalChunk = '';
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          finalChunk += result[0].transcript + ' ';
-        } else {
-          interim += result[0].transcript;
-        }
-      }
-
-      if (finalChunk) {
-        setTranscript((prev) => prev + finalChunk);
-        setInterimText('');
-      } else {
-        setInterimText(interim);
-      }
-    };
-
-    // On iOS Safari, continuous mode stops after silence — restart automatically
-    recognition.onend = () => {
-      if (recognitionRef.current === recognition && recordingState === 'recording') {
-        try { recognition.start(); } catch { /* already started */ }
-      }
-    };
-
-    recognition.onerror = (e) => {
-      if (e.error === 'no-speech') return; // common on pauses — ignore
-      console.error('Speech recognition error:', e.error);
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-
+  const startRecording = useCallback(async () => {
+    setRecordingState('starting');
+    const ok = await start();
+    if (!ok) {
+      setRecordingState(prev => (prev === 'starting' ? 'idle' : prev));
+      return;
+    }
     startTimeRef.current = Date.now() - elapsed * 1000;
     timerRef.current = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
     }, 1000);
-
     setRecordingState('recording');
-  }, [speechSupported, elapsed, recordingState]);
+  }, [start, elapsed]);
 
   const stopRecording = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
+    stop();
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    setInterimText('');
     setRecordingState('stopped');
-  }, []);
+  }, [stop]);
 
   const handleToggleRecording = () => {
     if (recordingState === 'idle' || recordingState === 'stopped') {
       startRecording();
-    } else {
+    } else if (recordingState === 'recording') {
       stopRecording();
     }
   };
@@ -236,6 +180,7 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
   };
 
   const hasTranscript = transcript.trim().length > 0;
+  const isSupported = !!navigator.mediaDevices?.getUserMedia;
 
   return (
     <div className="meeting-recorder">
@@ -274,21 +219,36 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
       <div className="meeting-body">
         {/* Record controls */}
         <div className="record-controls">
-          {!speechSupported ? (
+          {!isSupported ? (
             <p className="speech-unsupported">
-              Speech recognition is not supported in this browser. Try Chrome or Safari on iOS.
+              Audio capture is not supported in this browser. Try Chrome or Edge on desktop.
             </p>
           ) : (
             <>
               <button
                 className={`record-btn${recordingState === 'recording' ? ' recording' : ''}`}
                 onClick={handleToggleRecording}
+                disabled={recordingState === 'starting'}
               >
-                {recordingState === 'recording' ? '⏹ Stop' : '🎙 Record'}
+                {recordingState === 'starting'
+                  ? 'Starting…'
+                  : recordingState === 'recording'
+                  ? '⏹ Stop'
+                  : '🎙 Record'}
               </button>
               <span className="record-timer">{formatTime(elapsed)}</span>
               {recordingState === 'recording' && (
                 <span className="record-pulse">● Recording</span>
+              )}
+              {recordingState === 'recording' && displayDenied && (
+                <span style={{ fontSize: 13, color: 'var(--warning, #b45309)', marginLeft: 8 }}>
+                  Mic only — meeting audio not shared
+                </span>
+              )}
+              {captureError && (
+                <span style={{ fontSize: 13, color: 'var(--danger)', marginLeft: 8 }}>
+                  ⚠️ {captureError}
+                </span>
               )}
             </>
           )}
@@ -315,7 +275,7 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onBack }: Pro
                   Tap Record to start capturing your meeting…
                 </p>
               )}
-              {!hasTranscript && recordingState === 'recording' && (
+              {!hasTranscript && (recordingState === 'starting' || recordingState === 'recording') && (
                 <p className="transcript-placeholder">Listening…</p>
               )}
               <span className="transcript-committed">{transcript}</span>

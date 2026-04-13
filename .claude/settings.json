@@ -5,7 +5,8 @@
       "Bash(gh repo:*)",
       "Bash(where git:*)",
       "Bash(git --version)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(rtk tsc:*)"
     ]
   }
 }
