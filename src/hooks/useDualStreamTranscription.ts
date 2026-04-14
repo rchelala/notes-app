@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback } from 'react';
 
-const DG_WS_URL =
+const DG_WS_URL = (sampleRate: number) =>
   `wss://api.deepgram.com/v1/listen?` +
   new URLSearchParams({
     encoding: 'linear16',
-    sample_rate: '16000',
+    sample_rate: String(sampleRate),
     channels: '1',
     interim_results: 'true',
     language: 'en-US',
@@ -125,7 +125,8 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
     processor.connect(audioCtx.destination);
 
     // 5. Open Deepgram WebSocket — token passed as subprotocol since browser WS can't send custom headers
-    const ws = new WebSocket(DG_WS_URL, ['token', token]);
+    console.log('[DG] AudioContext sampleRate:', audioCtx.sampleRate);
+    const ws = new WebSocket(DG_WS_URL(audioCtx.sampleRate), ['token', token]);
     wsRef.current = ws;
 
     ws.onerror = () => {
