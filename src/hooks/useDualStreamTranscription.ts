@@ -81,7 +81,8 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
         displayStream = null;
         setDisplayDenied(true);
       }
-    } catch {
+    } catch (err) {
+      console.warn('[DG] getDisplayMedia failed:', err);
       // User dismissed the share dialog — fall back to mic-only
       setDisplayDenied(true);
     }
