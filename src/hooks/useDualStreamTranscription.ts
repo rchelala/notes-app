@@ -98,6 +98,11 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
       return false;
     }
 
+    const micTrack = micStream.getAudioTracks()[0];
+    console.log('[MIC] track label:', micTrack?.label);
+    console.log('[MIC] track muted:', micTrack?.muted);
+    console.log('[MIC] track settings:', JSON.stringify(micTrack?.getSettings()));
+
     displayStreamRef.current = displayStream;
     micStreamRef.current = micStream;
 
@@ -161,9 +166,15 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
     };
 
     // 6. Send PCM chunks to Deepgram on every audio buffer
+    let volumeLogCount = 0;
     processor.onaudioprocess = (e) => {
       if (ws.readyState !== WebSocket.OPEN) return;
       const input = e.inputBuffer.getChannelData(0);
+      if (volumeLogCount < 5) {
+        const rms = Math.sqrt(input.reduce((s, v) => s + v * v, 0) / input.length);
+        console.log('[MIC] RMS volume:', rms.toFixed(6));
+        volumeLogCount++;
+      }
       // Convert Float32 [-1, 1] to Int16 [-32768, 32767]
       const int16 = new Int16Array(input.length);
       for (let i = 0; i < input.length; i++) {
