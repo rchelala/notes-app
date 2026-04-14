@@ -396,6 +396,18 @@ button:active:not(:disabled) { transform: scale(0.96); }
   flex-shrink: 0;
 }
 
+.mic-select {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  max-width: 200px;
+  cursor: pointer;
+}
+.mic-select:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .record-btn {
   padding: 10px 26px;
   border-radius: 999px;

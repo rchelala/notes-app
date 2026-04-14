@@ -15,9 +15,10 @@ const DG_WS_URL =
 interface Callbacks {
   onFinalText: (text: string) => void;
   onInterimText: (text: string) => void;
+  micDeviceId?: string;
 }
 
-export function useDualStreamTranscription({ onFinalText, onInterimText }: Callbacks) {
+export function useDualStreamTranscription({ onFinalText, onInterimText, micDeviceId }: Callbacks) {
   const [displayDenied, setDisplayDenied] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
@@ -86,7 +87,9 @@ export function useDualStreamTranscription({ onFinalText, onInterimText }: Callb
     // 3. Request microphone (your voice)
     let micStream: MediaStream;
     try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: micDeviceId ? { deviceId: { exact: micDeviceId } } : true,
+      });
     } catch {
       displayStream?.getTracks().forEach(t => t.stop());
       setCaptureError('Microphone access denied. Please allow microphone access and try again.');

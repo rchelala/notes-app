@@ -32,6 +32,26 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onBa
   const [saveError, setSaveError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(existingMeeting?.durationSeconds ?? 0);
 
+  const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedMicId, setSelectedMicId] = useState<string>('');
+
+  const enumerateMics = useCallback(async () => {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const mics = devices.filter(d => d.kind === 'audioinput');
+    setMicDevices(mics);
+    setSelectedMicId(prev => {
+      // Keep current selection if still available, otherwise pick default
+      if (prev && mics.some(m => m.deviceId === prev)) return prev;
+      return mics.find(m => m.deviceId === 'default')?.deviceId ?? mics[0]?.deviceId ?? '';
+    });
+  }, []);
+
+  useEffect(() => {
+    enumerateMics();
+    navigator.mediaDevices.addEventListener('devicechange', enumerateMics);
+    return () => navigator.mediaDevices.removeEventListener('devicechange', enumerateMics);
+  }, [enumerateMics]);
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
   const transcriptRef = useRef(transcript);
@@ -49,6 +69,7 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onBa
   const { start, stop, displayDenied, captureError } = useDualStreamTranscription({
     onFinalText: handleFinalText,
     onInterimText: handleInterimText,
+    micDeviceId: selectedMicId || undefined,
   });
 
   // Auto-scroll transcript
@@ -225,6 +246,21 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onBa
             </p>
           ) : (
             <>
+              {micDevices.length > 1 && (
+                <select
+                  className="mic-select"
+                  value={selectedMicId}
+                  onChange={e => setSelectedMicId(e.target.value)}
+                  disabled={recordingState === 'recording' || recordingState === 'starting'}
+                  title="Select microphone"
+                >
+                  {micDevices.map(d => (
+                    <option key={d.deviceId} value={d.deviceId}>
+                      {d.label || `Microphone ${d.deviceId.slice(0, 6)}`}
+                    </option>
+                  ))}
+                </select>
+              )}
               <button
                 className={`record-btn${recordingState === 'recording' ? ' recording' : ''}`}
                 onClick={handleToggleRecording}
