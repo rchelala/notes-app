@@ -72,7 +72,9 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
     // 2. Request display audio (what you hear — Teams/meeting output)
     let displayStream: MediaStream | null = null;
     try {
-      displayStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: false });
+      // video: true required on some Chrome versions — stop the video track immediately after
+      displayStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+      displayStream.getVideoTracks().forEach(t => t.stop());
       if (displayStream.getAudioTracks().length === 0) {
         // User shared a source without audio
         displayStream.getTracks().forEach(t => t.stop());
