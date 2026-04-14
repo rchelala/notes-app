@@ -133,6 +133,7 @@ export function useDualStreamTranscription({ onFinalText, onInterimText }: Callb
       }
     };
 
+    ws.onopen = () => console.log('[DG] WebSocket opened');
     ws.onmessage = (evt) => {
       type DGResult = {
         type: string;
@@ -141,6 +142,7 @@ export function useDualStreamTranscription({ onFinalText, onInterimText }: Callb
       };
       try {
         const msg = JSON.parse(evt.data as string) as DGResult;
+        console.log('[DG] message type:', msg.type, msg.type === 'Results' ? JSON.stringify(msg.channel?.alternatives?.[0]) : '');
         if (msg.type !== 'Results') return;
         const text = msg.channel?.alternatives?.[0]?.transcript ?? '';
         if (!text) return;
