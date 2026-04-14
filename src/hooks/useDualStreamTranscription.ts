@@ -81,8 +81,7 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
         displayStream = null;
         setDisplayDenied(true);
       }
-    } catch (err) {
-      console.warn('[DG] getDisplayMedia failed:', err);
+    } catch {
       // User dismissed the share dialog — fall back to mic-only
       setDisplayDenied(true);
     }
@@ -125,7 +124,6 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
     processor.connect(audioCtx.destination);
 
     // 5. Open Deepgram WebSocket — token passed as subprotocol since browser WS can't send custom headers
-    console.log('[DG] AudioContext sampleRate:', audioCtx.sampleRate);
     const ws = new WebSocket(DG_WS_URL(audioCtx.sampleRate), ['token', token]);
     wsRef.current = ws;
 
@@ -140,7 +138,6 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
       }
     };
 
-    ws.onopen = () => console.log('[DG] WebSocket opened');
     ws.onmessage = (evt) => {
       type DGResult = {
         type: string;
@@ -149,7 +146,6 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
       };
       try {
         const msg = JSON.parse(evt.data as string) as DGResult;
-        console.log('[DG] message type:', msg.type, msg.type === 'Results' ? JSON.stringify(msg.channel?.alternatives?.[0]) : '');
         if (msg.type !== 'Results') return;
         const text = msg.channel?.alternatives?.[0]?.transcript ?? '';
         if (!text) return;
