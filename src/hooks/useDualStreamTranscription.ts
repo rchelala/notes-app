@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 
-const DG_WS_URL = (token: string) =>
+const DG_WS_URL =
   `wss://api.deepgram.com/v1/listen?` +
   new URLSearchParams({
     encoding: 'linear16',
@@ -9,9 +9,8 @@ const DG_WS_URL = (token: string) =>
     interim_results: 'true',
     language: 'en-US',
     smart_format: 'true',
-  }).toString() +
-  // token passed as subprotocol since browser WebSocket doesn't support custom headers
-  `&model=nova-2&token=${token}`;
+    model: 'nova-2',
+  }).toString();
 
 interface Callbacks {
   onFinalText: (text: string) => void;
@@ -119,8 +118,8 @@ export function useDualStreamTranscription({ onFinalText, onInterimText }: Callb
     // Connect to the silent destination to keep the graph alive
     processor.connect(audioCtx.destination);
 
-    // 5. Open Deepgram WebSocket — token in URL since browser WS can't send custom headers
-    const ws = new WebSocket(DG_WS_URL(token));
+    // 5. Open Deepgram WebSocket — token passed as subprotocol since browser WS can't send custom headers
+    const ws = new WebSocket(DG_WS_URL, ['token', token]);
     wsRef.current = ws;
 
     ws.onerror = () => {
