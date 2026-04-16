@@ -644,6 +644,96 @@ button:active:not(:disabled) { transform: scale(0.96); }
   font-weight: 700;
 }
 
+/* ─── Attendees ────────────────────────────────────────────────────────────── */
+.attendees-section {
+  padding: 12px 24px 0;
+}
+.attendees-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.attendees-header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.attendees-input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.attendee-input {
+  flex: 1;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.attendee-input:focus { border-color: var(--primary); }
+.attendee-input::placeholder { color: var(--text-subtle); }
+.btn-sm {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 7px;
+}
+.attendee-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 12px;
+}
+.attendee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--primary-dim);
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 999px;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 8px 3px 12px;
+}
+.attendee-chip-remove {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.6;
+  padding: 0;
+  transition: opacity 0.15s;
+}
+.attendee-chip-remove:hover { opacity: 1; }
+
+/* Meeting card attendees */
+.meeting-card-attendees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.meeting-card-attendee-chip {
+  background: var(--primary-dim);
+  border: 1px solid rgba(99,102,241,0.15);
+  border-radius: 999px;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+}
+
 /* ─── Scrollbars ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

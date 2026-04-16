@@ -28,7 +28,7 @@ export default function App() {
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
 
   const { user, loading: authLoading, authError, signIn, signOut } = useAuth();
-  const { meetings, loading: meetingsLoading, createMeeting, updateMeetingSummary, deleteMeeting } =
+  const { meetings, loading: meetingsLoading, createMeeting, updateMeetingSummary, updateMeetingAttendees, deleteMeeting } =
     useMeetings(user?.uid ?? null);
 
   const [view, setView] = useState<View>({ type: 'meetings' });
@@ -73,8 +73,8 @@ export default function App() {
       <>
         <MeetingRecorder
           userId={user.uid}
-          onSave={async (title, transcript, durationSeconds, summary) => {
-            await createMeeting(user.uid, title, transcript, durationSeconds, summary);
+          onSave={async (title, transcript, durationSeconds, summary, attendees) => {
+            await createMeeting(user.uid, title, transcript, durationSeconds, summary, attendees);
             setView({ type: 'meetings' });
           }}
           onBack={() => setView({ type: 'meetings' })}
@@ -92,10 +92,14 @@ export default function App() {
         <MeetingRecorder
           userId={user.uid}
           existingMeeting={freshMeeting}
-          onSave={async (_title, _transcript, _duration, summary) => {
-            if (summary) await updateMeetingSummary(freshMeeting.id, summary as MeetingSummary);
+          onSave={async (_title, _transcript, _duration, summary, attendees) => {
+            await Promise.all([
+              summary ? updateMeetingSummary(freshMeeting.id, summary as MeetingSummary) : Promise.resolve(),
+              updateMeetingAttendees(freshMeeting.id, attendees),
+            ]);
             setView({ type: 'meetings' });
           }}
+          onUpdateAttendees={(attendees) => updateMeetingAttendees(freshMeeting.id, attendees)}
           onBack={() => setView({ type: 'meetings' })}
         />
         {themeBtn}

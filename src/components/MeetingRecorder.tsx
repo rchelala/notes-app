@@ -9,14 +9,16 @@ interface Props {
     title: string,
     transcript: string,
     durationSeconds: number,
-    summary: MeetingSummary | null
+    summary: MeetingSummary | null,
+    attendees: string[]
   ) => Promise<void>;
+  onUpdateAttendees?: (attendees: string[]) => Promise<void>;
   onBack: () => void;
 }
 
 type RecordingState = 'idle' | 'starting' | 'recording' | 'stopped';
 
-export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onBack }: Props) => {
+export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUpdateAttendees, onBack }: Props) => {
   const [recordingState, setRecordingState] = useState<RecordingState>(
     existingMeeting ? 'stopped' : 'idle'
   );
@@ -31,6 +33,10 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onBa
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(existingMeeting?.durationSeconds ?? 0);
+
+  const [attendees, setAttendees] = useState<string[]>(existingMeeting?.attendees ?? []);
+  const [attendeeInput, setAttendeeInput] = useState('');
+  const [savingAttendees, setSavingAttendees] = useState(false);
 
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>('');
@@ -182,12 +188,33 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onBa
     }
   };
 
+  const addAttendee = () => {
+    const name = attendeeInput.trim();
+    if (!name || attendees.includes(name)) return;
+    setAttendees(prev => [...prev, name]);
+    setAttendeeInput('');
+  };
+
+  const removeAttendee = (name: string) => {
+    setAttendees(prev => prev.filter(a => a !== name));
+  };
+
+  const handleSaveAttendees = async () => {
+    if (!onUpdateAttendees) return;
+    setSavingAttendees(true);
+    try {
+      await onUpdateAttendees(attendees);
+    } finally {
+      setSavingAttendees(false);
+    }
+  };
+
   const handleSave = async () => {
     const finalTitle = title.trim() || `Meeting ${new Date().toLocaleDateString()}`;
     setSaving(true);
     setSaveError(null);
     try {
-      await onSave(finalTitle, transcript, elapsed, summary);
+      await onSave(finalTitle, transcript, elapsed, summary, attendees);
     } catch (err: unknown) {
       setSaveError((err as Error).message ?? 'Failed to save. Try again.');
       setSaving(false);
@@ -287,6 +314,44 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onBa
                 </span>
               )}
             </>
+          )}
+        </div>
+
+        {/* Attendees */}
+        <div className="attendees-section">
+          <div className="attendees-header">
+            <h2>Attendees</h2>
+            {onUpdateAttendees && (
+              <button
+                className="btn-ghost btn-sm"
+                onClick={handleSaveAttendees}
+                disabled={savingAttendees}
+              >
+                {savingAttendees ? 'Saving…' : 'Save'}
+              </button>
+            )}
+          </div>
+          <div className="attendees-input-row">
+            <input
+              className="attendee-input"
+              placeholder="Add name or email…"
+              value={attendeeInput}
+              onChange={e => setAttendeeInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAttendee(); } }}
+            />
+            <button className="btn-ghost btn-sm" onClick={addAttendee} disabled={!attendeeInput.trim()}>
+              + Add
+            </button>
+          </div>
+          {attendees.length > 0 && (
+            <div className="attendee-chips">
+              {attendees.map(name => (
+                <span key={name} className="attendee-chip">
+                  {name}
+                  <button className="attendee-chip-remove" onClick={() => removeAttendee(name)} title="Remove">×</button>
+                </span>
+              ))}
+            </div>
           )}
         </div>
 

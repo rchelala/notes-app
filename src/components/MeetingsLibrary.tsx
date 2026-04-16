@@ -64,6 +64,13 @@ export const MeetingsLibrary = ({
               ) : (
                 <p className="meeting-card-no-summary">No summary yet</p>
               )}
+              {m.attendees?.length > 0 && (
+                <div className="meeting-card-attendees">
+                  {m.attendees.map(a => (
+                    <span key={a} className="meeting-card-attendee-chip">{a}</span>
+                  ))}
+                </div>
+              )}
             </div>
             <button
               className="meeting-delete-btn"

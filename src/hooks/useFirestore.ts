@@ -46,7 +46,8 @@ export const useMeetings = (userId: string | null) => {
     title: string,
     transcript: string,
     durationSeconds: number,
-    summary: MeetingSummary | null
+    summary: MeetingSummary | null,
+    attendees: string[] = []
   ): Promise<string> => {
     const now = Date.now();
     const ref = await addDoc(collection(db, 'meetings'), {
@@ -54,6 +55,7 @@ export const useMeetings = (userId: string | null) => {
       title,
       transcript,
       summary,
+      attendees,
       durationSeconds,
       createdAt: now,
       updatedAt: now,
@@ -65,9 +67,13 @@ export const useMeetings = (userId: string | null) => {
     await updateDoc(doc(db, 'meetings', meetingId), { summary, updatedAt: Date.now() });
   };
 
+  const updateMeetingAttendees = async (meetingId: string, attendees: string[]) => {
+    await updateDoc(doc(db, 'meetings', meetingId), { attendees, updatedAt: Date.now() });
+  };
+
   const deleteMeeting = async (meetingId: string) => {
     await deleteDoc(doc(db, 'meetings', meetingId));
   };
 
-  return { meetings, loading, createMeeting, updateMeetingSummary, deleteMeeting };
+  return { meetings, loading, createMeeting, updateMeetingSummary, updateMeetingAttendees, deleteMeeting };
 };

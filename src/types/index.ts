@@ -11,6 +11,7 @@ export interface Meeting {
   title: string;
   transcript: string;
   summary: MeetingSummary | null;
+  attendees: string[];
   createdAt: number;
   updatedAt: number;
   durationSeconds: number;
