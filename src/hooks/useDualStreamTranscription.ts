@@ -10,6 +10,7 @@ const DG_WS_URL = (sampleRate: number) =>
     language: 'en-US',
     smart_format: 'true',
     model: 'nova-2',
+    diarize: 'true',
   }).toString();
 
 interface Callbacks {
@@ -21,6 +22,8 @@ interface Callbacks {
 export function useDualStreamTranscription({ onFinalText, onInterimText, micDeviceId }: Callbacks) {
   const [displayDenied, setDisplayDenied] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const maxSpeakerRef = useRef<number>(0);
+  const [detectedSpeakers, setDetectedSpeakers] = useState<number>(0);
 
   // Audio graph refs
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -32,6 +35,8 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
   const micStreamRef = useRef<MediaStream | null>(null);
 
   const stop = useCallback(() => {
+    setDetectedSpeakers(maxSpeakerRef.current + 1); // speakers are 0-indexed
+    maxSpeakerRef.current = 0;
     // Close WebSocket gracefully
     if (wsRef.current) {
       wsRef.current.onclose = null; // suppress the error handler on intentional close
@@ -139,24 +144,54 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
     };
 
     ws.onmessage = (evt) => {
+      type DGWord = { word: string; speaker: number; punctuated_word?: string };
       type DGResult = {
         type: string;
         is_final: boolean;
-        channel: { alternatives: { transcript: string }[] };
+        channel: { alternatives: { transcript: string; words?: DGWord[] }[] };
       };
       try {
         const msg = JSON.parse(evt.data as string) as DGResult;
         if (msg.type !== 'Results') return;
-        const text = msg.channel?.alternatives?.[0]?.transcript ?? '';
-        if (!text) return;
+        const alternative = msg.channel?.alternatives?.[0];
+        if (!alternative) return;
+
+        const words = alternative.words ?? [];
         if (msg.is_final) {
-          onFinalText(text + ' ');
+          if (words.length > 0) {
+            // Group consecutive words by speaker into labeled segments
+            const segments: string[] = [];
+            let currentSpeaker = words[0].speaker;
+            let currentWords: string[] = [];
+
+            for (const w of words) {
+              if (w.speaker !== currentSpeaker) {
+                segments.push(`[Speaker ${currentSpeaker}]: ${currentWords.join(' ')}`);
+                currentSpeaker = w.speaker;
+                currentWords = [];
+              }
+              currentWords.push(w.punctuated_word ?? w.word);
+            }
+            if (currentWords.length) {
+              segments.push(`[Speaker ${currentSpeaker}]: ${currentWords.join(' ')}`);
+            }
+
+            // Track max speaker number seen
+            const maxSeen = Math.max(...words.map(w => w.speaker));
+            if (maxSeen > maxSpeakerRef.current) maxSpeakerRef.current = maxSeen;
+
+            onFinalText(segments.join('\n') + '\n');
+          } else {
+            // Fallback: no word-level data
+            const text = alternative.transcript ?? '';
+            if (text) onFinalText(text + ' ');
+          }
           onInterimText('');
         } else {
-          onInterimText(text);
+          onInterimText(alternative.transcript ?? '');
         }
       } catch {
-        // ignore malformed Deepgram messages
+        // ignore malformed messages
       }
     };
 
@@ -176,5 +211,5 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
     return true;
   }, [stop, onFinalText, onInterimText]);
 
-  return { start, stop, displayDenied, captureError };
+  return { start, stop, displayDenied, captureError, detectedSpeakers };
 }

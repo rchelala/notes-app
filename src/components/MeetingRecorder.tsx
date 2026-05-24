@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Meeting, MeetingSummary } from '../types';
 import { useDualStreamTranscription } from '../hooks/useDualStreamTranscription';
 import { exportMeetingPdf } from '../utils/exportPdf';
+import { SpeakerMappingModal } from './SpeakerMappingModal';
 
 interface Props {
   userId: string;
@@ -47,6 +48,7 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
 
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>('');
+  const [showSpeakerModal, setShowSpeakerModal] = useState(false);
 
   const enumerateMics = useCallback(async () => {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -79,7 +81,7 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
     setInterimText(text);
   }, []);
 
-  const { start, stop, displayDenied, captureError } = useDualStreamTranscription({
+  const { start, stop, displayDenied, captureError, detectedSpeakers } = useDualStreamTranscription({
     onFinalText: handleFinalText,
     onInterimText: handleInterimText,
     micDeviceId: selectedMicId || undefined,
@@ -121,7 +123,10 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
       timerRef.current = null;
     }
     setRecordingState('stopped');
-  }, [stop]);
+    if (!existingMeeting && detectedSpeakers > 1) {
+      setShowSpeakerModal(true);
+    }
+  }, [stop, existingMeeting, detectedSpeakers]);
 
   const handleToggleRecording = () => {
     if (recordingState === 'idle' || recordingState === 'stopped') {
@@ -556,6 +561,22 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
           </div>
         </div>
       </div>
+      {showSpeakerModal && (
+        <SpeakerMappingModal
+          speakerCount={detectedSpeakers}
+          attendees={attendees}
+          onSkip={() => setShowSpeakerModal(false)}
+          onApply={(mapping) => {
+            setTranscript(prev =>
+              Object.entries(mapping).reduce(
+                (text, [num, name]) => text.split(`[Speaker ${num}]:`).join(`[${name}]:`),
+                prev
+              )
+            );
+            setShowSpeakerModal(false);
+          }}
+        />
+      )}
     </div>
   );
 };
