@@ -34,8 +34,9 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
   const displayStreamRef = useRef<MediaStream | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
 
-  const stop = useCallback(() => {
-    setDetectedSpeakers(maxSpeakerRef.current + 1); // speakers are 0-indexed
+  const stop = useCallback((): number => {
+    const count = maxSpeakerRef.current + 1; // speakers are 0-indexed
+    setDetectedSpeakers(count);
     maxSpeakerRef.current = 0;
     // Close WebSocket gracefully
     if (wsRef.current) {
@@ -56,10 +57,13 @@ export function useDualStreamTranscription({ onFinalText, onInterimText, micDevi
     micStreamRef.current = null;
     // Clear interim text
     onInterimText('');
+    return count;
   }, [onInterimText]);
 
   /** Returns true when recording successfully started, false on failure. */
   const start = useCallback(async (): Promise<boolean> => {
+    maxSpeakerRef.current = 0;
+    setDetectedSpeakers(0);
     setCaptureError(null);
     setDisplayDenied(false);
 

@@ -117,16 +117,16 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
   }, [start, elapsed]);
 
   const stopRecording = useCallback(() => {
-    stop();
+    const speakerCount = stop();
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
     setRecordingState('stopped');
-    if (!existingMeeting && detectedSpeakers > 1) {
+    if (!existingMeeting && speakerCount > 1) {
       setShowSpeakerModal(true);
     }
-  }, [stop, existingMeeting, detectedSpeakers]);
+  }, [stop, existingMeeting]);
 
   const handleToggleRecording = () => {
     if (recordingState === 'idle' || recordingState === 'stopped') {
@@ -567,12 +567,11 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
           attendees={attendees}
           onSkip={() => setShowSpeakerModal(false)}
           onApply={(mapping) => {
-            setTranscript(prev =>
-              Object.entries(mapping).reduce(
-                (text, [num, name]) => text.split(`[Speaker ${num}]:`).join(`[${name}]:`),
-                prev
-              )
-            );
+            setTranscript(prev => {
+              const speakerNums = Object.keys(mapping).join('|');
+              const pattern = new RegExp(`\\[Speaker (${speakerNums})\\]:`, 'g');
+              return prev.replace(pattern, (_, num) => `[${mapping[Number(num)]}]:`);
+            });
             setShowSpeakerModal(false);
           }}
         />

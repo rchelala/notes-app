@@ -10,11 +10,13 @@ interface Props {
 const SPEAKER_COLORS = ['#6c63ff', '#e07b39', '#4ecdc4', '#f7b731', '#a29bfe'];
 
 export const SpeakerMappingModal = ({ speakerCount, attendees, onApply, onSkip }: Props) => {
-  const initial: Record<number, string> = {};
-  for (let i = 0; i < speakerCount; i++) {
-    initial[i] = attendees[i] ?? 'Unknown';
-  }
-  const [mapping, setMapping] = useState<Record<number, string>>(initial);
+  const [mapping, setMapping] = useState<Record<number, string>>(() => {
+    const init: Record<number, string> = {};
+    for (let i = 0; i < speakerCount; i++) {
+      init[i] = attendees[i] ?? 'Unknown';
+    }
+    return init;
+  });
 
   const options = ['Unknown', ...attendees];
 
