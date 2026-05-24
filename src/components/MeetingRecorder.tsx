@@ -471,7 +471,7 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
                 {summary && existingMeeting && (
                   <button
                     className="btn-ghost btn-sm"
-                    onClick={() => exportMeetingPdf({ ...existingMeeting, summary, transcript })}
+                    onClick={() => exportMeetingPdf({ ...existingMeeting, summary, transcript, attendees })}
                   >
                     ⬇️ Export PDF
                   </button>

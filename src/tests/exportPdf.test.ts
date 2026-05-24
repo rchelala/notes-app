@@ -36,5 +36,6 @@ describe('buildPdfContent', () => {
     expect(content.overview).toBe('');
     expect(content.decisions).toEqual([]);
     expect(content.actionItems).toEqual([]);
+    expect(content.topics).toEqual([]);
   });
 });
