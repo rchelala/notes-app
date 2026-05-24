@@ -769,18 +769,13 @@ button:active:not(:disabled) { transform: scale(0.96); }
   border: 1px solid var(--primary);
   border-radius: 6px;
   color: var(--text);
-  font-family: monospace;
+  font-family: inherit;
   font-size: 13px;
   line-height: 1.7;
   padding: 10px;
   resize: vertical;
   min-height: 200px;
   box-sizing: border-box;
-}
-
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 11px;
 }
 
 /* ─── Scrollbars ───────────────────────────────────────────────────────────── */

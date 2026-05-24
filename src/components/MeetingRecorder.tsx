@@ -42,6 +42,7 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
   const [editingTranscript, setEditingTranscript] = useState(false);
   const [editedTranscript, setEditedTranscript] = useState('');
   const [savingTranscript, setSavingTranscript] = useState(false);
+  const [transcriptError, setTranscriptError] = useState<string | null>(null);
 
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>('');
@@ -206,6 +207,7 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
 
   const handleStartEdit = () => {
     setEditedTranscript(transcript);
+    setAnalyzeError(null);
     setEditingTranscript(true);
   };
 
@@ -217,6 +219,7 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
   const handleSaveTranscript = async () => {
     if (!existingMeeting?.id) return;
     setSavingTranscript(true);
+    setTranscriptError(null);
     try {
       await onUpdateTranscript?.(editedTranscript);
       setTranscript(editedTranscript);
@@ -224,6 +227,8 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
       setQuickResult(null);
       setEditingTranscript(false);
       setEditedTranscript('');
+    } catch (err) {
+      setTranscriptError((err as Error).message ?? 'Failed to save. Try again.');
     } finally {
       setSavingTranscript(false);
     }
@@ -434,6 +439,9 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
                   onChange={(e) => setEditedTranscript(e.target.value)}
                   rows={12}
                 />
+                {transcriptError && (
+                  <p className="error-text">{transcriptError}</p>
+                )}
               </div>
             ) : (
               <div className="transcript-box" ref={scrollRef}>

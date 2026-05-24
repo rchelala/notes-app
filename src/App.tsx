@@ -100,11 +100,7 @@ export default function App() {
             setView({ type: 'meetings' });
           }}
           onUpdateAttendees={(attendees) => updateMeetingAttendees(freshMeeting.id, attendees)}
-          onUpdateTranscript={async (transcript) => {
-            if (freshMeeting?.id) {
-              await updateMeetingTranscript(freshMeeting.id, transcript);
-            }
-          }}
+          onUpdateTranscript={(transcript) => updateMeetingTranscript(freshMeeting.id, transcript)}
           onBack={() => setView({ type: 'meetings' })}
         />
         {themeBtn}
