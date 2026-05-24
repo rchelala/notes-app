@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Meeting } from '../types';
+import { searchMeetings, getMatchSnippet } from '../utils/searchMeetings';
 
 interface Props {
   meetings: Meeting[];
@@ -24,7 +26,11 @@ const formatDate = (ts: number) =>
 
 export const MeetingsLibrary = ({
   meetings, loading, userEmail, onOpen, onNewMeeting, onDelete, onSignOut,
-}: Props) => (
+}: Props) => {
+  const [query, setQuery] = useState('');
+  const filtered = searchMeetings(meetings, query);
+
+  return (
   <div className="meetings-library">
     <header className="library-header">
       <h1>Meetings</h1>
@@ -39,6 +45,30 @@ export const MeetingsLibrary = ({
       </div>
     </header>
 
+    {!loading && meetings.length > 0 && (
+      <div className="search-bar-container">
+        <span className="search-icon">🔍</span>
+        <input
+          className="search-input"
+          type="text"
+          placeholder="Search transcripts and summaries…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {query && (
+          <button className="search-clear" onClick={() => setQuery('')}>✕</button>
+        )}
+      </div>
+    )}
+
+    {query && (
+      <p className="search-results-count">
+        {filtered.length === 0
+          ? 'No meetings matched'
+          : `${filtered.length} meeting${filtered.length === 1 ? '' : 's'} matched`}
+      </p>
+    )}
+
     {loading ? (
       <div className="loading-state">Loading meetings…</div>
     ) : meetings.length === 0 ? (
@@ -51,7 +81,9 @@ export const MeetingsLibrary = ({
       </div>
     ) : (
       <div className="meetings-list">
-        {meetings.map((m) => (
+        {filtered.map((m) => {
+          const snippet = query ? getMatchSnippet(m, query) : null;
+          return (
           <div key={m.id} className="meeting-card" onClick={() => onOpen(m)}>
             <div className="meeting-card-icon">🎙</div>
             <div className="meeting-card-body">
@@ -71,6 +103,15 @@ export const MeetingsLibrary = ({
                   ))}
                 </div>
               )}
+              {snippet && (
+                <div className={`match-snippet match-snippet--${snippet.source}`}>
+                  <span className="match-snippet-label">
+                    {snippet.source === 'transcript' ? 'Transcript' : 'Summary'}
+                  </span>
+                  {' · '}
+                  {snippet.text}
+                </div>
+              )}
             </div>
             <button
               className="meeting-delete-btn"
@@ -83,8 +124,10 @@ export const MeetingsLibrary = ({
               🗑️
             </button>
           </div>
-        ))}
+          );
+        })}
       </div>
     )}
   </div>
-);
+  );
+};
