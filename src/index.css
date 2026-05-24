@@ -734,6 +734,55 @@ button:active:not(:disabled) { transform: scale(0.96); }
   padding: 2px 8px;
 }
 
+/* ─── Transcript editing ────────────────────────────────────────────────────── */
+.transcript-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.transcript-edit-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.transcript-edit-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.transcript-edit-warning {
+  background: rgba(224, 123, 57, 0.1);
+  border-left: 2px solid #e07b39;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #e07b39;
+  margin-bottom: 8px;
+}
+
+.transcript-textarea {
+  width: 100%;
+  background: var(--surface-elevated);
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 10px;
+  resize: vertical;
+  min-height: 200px;
+  box-sizing: border-box;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
 /* ─── Scrollbars ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

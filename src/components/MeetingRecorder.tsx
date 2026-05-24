@@ -13,12 +13,13 @@ interface Props {
     attendees: string[]
   ) => Promise<void>;
   onUpdateAttendees?: (attendees: string[]) => Promise<void>;
+  onUpdateTranscript?: (transcript: string) => Promise<void>;
   onBack: () => void;
 }
 
 type RecordingState = 'idle' | 'starting' | 'recording' | 'stopped';
 
-export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUpdateAttendees, onBack }: Props) => {
+export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUpdateAttendees, onUpdateTranscript, onBack }: Props) => {
   const [recordingState, setRecordingState] = useState<RecordingState>(
     existingMeeting ? 'stopped' : 'idle'
   );
@@ -37,6 +38,10 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
   const [attendees, setAttendees] = useState<string[]>(existingMeeting?.attendees ?? []);
   const [attendeeInput, setAttendeeInput] = useState('');
   const [savingAttendees, setSavingAttendees] = useState(false);
+
+  const [editingTranscript, setEditingTranscript] = useState(false);
+  const [editedTranscript, setEditedTranscript] = useState('');
+  const [savingTranscript, setSavingTranscript] = useState(false);
 
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>('');
@@ -199,6 +204,31 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
     setAttendees(prev => prev.filter(a => a !== name));
   };
 
+  const handleStartEdit = () => {
+    setEditedTranscript(transcript);
+    setEditingTranscript(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTranscript(false);
+    setEditedTranscript('');
+  };
+
+  const handleSaveTranscript = async () => {
+    if (!existingMeeting?.id) return;
+    setSavingTranscript(true);
+    try {
+      await onUpdateTranscript?.(editedTranscript);
+      setTranscript(editedTranscript);
+      setSummary(null);
+      setQuickResult(null);
+      setEditingTranscript(false);
+      setEditedTranscript('');
+    } finally {
+      setSavingTranscript(false);
+    }
+  };
+
   const handleSaveAttendees = async () => {
     if (!onUpdateAttendees) return;
     setSavingAttendees(true);
@@ -359,8 +389,29 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
           {/* Transcript panel */}
           <div className="meeting-panel">
             <div className="meeting-panel-header">
-              <h2>Transcript</h2>
-              {hasTranscript && (
+              <div className="transcript-header">
+                <h2>Transcript</h2>
+                {recordingState === 'stopped' && !editingTranscript && (
+                  <button className="btn-ghost btn-sm" onClick={handleStartEdit}>
+                    ✏️ Edit
+                  </button>
+                )}
+                {editingTranscript && (
+                  <div className="transcript-edit-actions">
+                    <button
+                      className="btn-primary btn-sm"
+                      onClick={handleSaveTranscript}
+                      disabled={savingTranscript}
+                    >
+                      {savingTranscript ? 'Saving…' : 'Save'}
+                    </button>
+                    <button className="btn-ghost btn-sm" onClick={handleCancelEdit}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+              {hasTranscript && !editingTranscript && (
                 <button
                   className="btn-primary"
                   onClick={handleAnalyze}
@@ -370,18 +421,34 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
                 </button>
               )}
             </div>
-            <div className="transcript-box" ref={scrollRef}>
-              {!hasTranscript && recordingState === 'idle' && (
-                <p className="transcript-placeholder">
-                  Tap Record to start capturing your meeting…
-                </p>
-              )}
-              {!hasTranscript && (recordingState === 'starting' || recordingState === 'recording') && (
-                <p className="transcript-placeholder">Listening…</p>
-              )}
-              <span className="transcript-committed">{transcript}</span>
-              <span className="transcript-interim">{interimText}</span>
-            </div>
+            {editingTranscript ? (
+              <div className="transcript-edit-container">
+                {summary && (
+                  <div className="transcript-edit-warning">
+                    ⚠️ Saving changes will clear the existing AI summary. Re-run analysis after saving.
+                  </div>
+                )}
+                <textarea
+                  className="transcript-textarea"
+                  value={editedTranscript}
+                  onChange={(e) => setEditedTranscript(e.target.value)}
+                  rows={12}
+                />
+              </div>
+            ) : (
+              <div className="transcript-box" ref={scrollRef}>
+                {!hasTranscript && recordingState === 'idle' && (
+                  <p className="transcript-placeholder">
+                    Tap Record to start capturing your meeting…
+                  </p>
+                )}
+                {!hasTranscript && (recordingState === 'starting' || recordingState === 'recording') && (
+                  <p className="transcript-placeholder">Listening…</p>
+                )}
+                <span className="transcript-committed">{transcript}</span>
+                <span className="transcript-interim">{interimText}</span>
+              </div>
+            )}
             {analyzeError && (
               <div className="analyze-error">⚠️ {analyzeError}</div>
             )}

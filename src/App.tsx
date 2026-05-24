@@ -28,7 +28,7 @@ export default function App() {
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
 
   const { user, loading: authLoading, authError, signIn, signOut } = useAuth();
-  const { meetings, loading: meetingsLoading, createMeeting, updateMeetingSummary, updateMeetingAttendees, deleteMeeting } =
+  const { meetings, loading: meetingsLoading, createMeeting, updateMeetingSummary, updateMeetingAttendees, updateMeetingTranscript, deleteMeeting } =
     useMeetings(user?.uid ?? null);
 
   const [view, setView] = useState<View>({ type: 'meetings' });
@@ -100,6 +100,11 @@ export default function App() {
             setView({ type: 'meetings' });
           }}
           onUpdateAttendees={(attendees) => updateMeetingAttendees(freshMeeting.id, attendees)}
+          onUpdateTranscript={async (transcript) => {
+            if (freshMeeting?.id) {
+              await updateMeetingTranscript(freshMeeting.id, transcript);
+            }
+          }}
           onBack={() => setView({ type: 'meetings' })}
         />
         {themeBtn}

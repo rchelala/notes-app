@@ -71,9 +71,17 @@ export const useMeetings = (userId: string | null) => {
     await updateDoc(doc(db, 'meetings', meetingId), { attendees, updatedAt: Date.now() });
   };
 
+  const updateMeetingTranscript = async (meetingId: string, transcript: string) => {
+    await updateDoc(doc(db, 'meetings', meetingId), {
+      transcript,
+      summary: null,
+      updatedAt: Date.now(),
+    });
+  };
+
   const deleteMeeting = async (meetingId: string) => {
     await deleteDoc(doc(db, 'meetings', meetingId));
   };
 
-  return { meetings, loading, createMeeting, updateMeetingSummary, updateMeetingAttendees, deleteMeeting };
+  return { meetings, loading, createMeeting, updateMeetingSummary, updateMeetingAttendees, updateMeetingTranscript, deleteMeeting };
 };
