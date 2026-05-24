@@ -1,3 +1,9 @@
+export interface CustomPrompt {
+  id: string;
+  label: string;
+  prompt: string;
+}
+
 export interface MeetingSummary {
   overview: string;
   decisions: string[];

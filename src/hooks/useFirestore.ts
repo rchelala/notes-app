@@ -9,9 +9,11 @@ import {
   query,
   where,
   orderBy,
+  getDoc,
+  setDoc,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Meeting, MeetingSummary } from '../types';
+import { Meeting, MeetingSummary, CustomPrompt } from '../types';
 
 export const useMeetings = (userId: string | null) => {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -84,4 +86,25 @@ export const useMeetings = (userId: string | null) => {
   };
 
   return { meetings, loading, createMeeting, updateMeetingSummary, updateMeetingAttendees, updateMeetingTranscript, deleteMeeting };
+};
+
+export const useCustomPrompts = (userId: string | null) => {
+  const [customPrompts, setCustomPrompts] = useState<CustomPrompt[]>([]);
+
+  useEffect(() => {
+    if (!userId) { setCustomPrompts([]); return; }
+    const userDoc = doc(db, 'users', userId);
+    getDoc(userDoc).then((snap) => {
+      const data = snap.data() as { customPrompts?: CustomPrompt[] } | undefined;
+      setCustomPrompts(data?.customPrompts ?? []);
+    });
+  }, [userId]);
+
+  const saveCustomPrompts = async (prompts: CustomPrompt[]) => {
+    if (!userId) return;
+    await setDoc(doc(db, 'users', userId), { customPrompts: prompts }, { merge: true });
+    setCustomPrompts(prompts);
+  };
+
+  return { customPrompts, saveCustomPrompts };
 };

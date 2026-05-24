@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { Meeting, MeetingSummary } from '../types';
 import { useDualStreamTranscription } from '../hooks/useDualStreamTranscription';
 import { exportMeetingPdf } from '../utils/exportPdf';
 import { SpeakerMappingModal } from './SpeakerMappingModal';
+import { useCustomPrompts } from '../hooks/useFirestore';
+import type { CustomPrompt } from '../types';
 
 interface Props {
   userId: string;
@@ -21,7 +24,7 @@ interface Props {
 
 type RecordingState = 'idle' | 'starting' | 'recording' | 'stopped';
 
-export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUpdateAttendees, onUpdateTranscript, onBack }: Props) => {
+export const MeetingRecorder = ({ userId, existingMeeting, onSave, onUpdateAttendees, onUpdateTranscript, onBack }: Props) => {
   const [recordingState, setRecordingState] = useState<RecordingState>(
     existingMeeting ? 'stopped' : 'idle'
   );
@@ -49,6 +52,12 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>('');
   const [showSpeakerModal, setShowSpeakerModal] = useState(false);
+
+  const { customPrompts, saveCustomPrompts } = useCustomPrompts(userId);
+
+  const [showAddPrompt, setShowAddPrompt] = useState(false);
+  const [newPromptLabel, setNewPromptLabel] = useState('');
+  const [newPromptText, setNewPromptText] = useState('');
 
   const enumerateMics = useCallback(async () => {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -238,6 +247,42 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
     } finally {
       setSavingTranscript(false);
     }
+  };
+
+  const handleCustomPrompt = async (cp: CustomPrompt) => {
+    const text = transcriptRef.current.trim();
+    if (!text) return;
+    setQuickLoading(cp.id);
+    setAnalyzeError(null);
+    try {
+      const res = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: text, customPrompt: cp.prompt }),
+      });
+      const data = await res.json() as { items?: string[]; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? 'Unknown error');
+      setQuickResult({ label: cp.label, items: data.items ?? [] });
+    } catch (err: unknown) {
+      setAnalyzeError((err as Error).message ?? 'Failed to analyze.');
+    } finally {
+      setQuickLoading(null);
+    }
+  };
+
+  const handleSaveCustomPrompt = async () => {
+    const label = newPromptLabel.trim();
+    const prompt = newPromptText.trim();
+    if (!label || !prompt || customPrompts.length >= 5) return;
+    const updated = [...customPrompts, { id: uuidv4(), label, prompt }];
+    await saveCustomPrompts(updated);
+    setNewPromptLabel('');
+    setNewPromptText('');
+    setShowAddPrompt(false);
+  };
+
+  const handleDeleteCustomPrompt = async (id: string) => {
+    await saveCustomPrompts(customPrompts.filter(cp => cp.id !== id));
   };
 
   const handleSaveAttendees = async () => {
@@ -546,6 +591,69 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
                       </button>
                     ))}
                   </div>
+
+                  {/* Divider */}
+                  <hr className="prompts-divider" />
+
+                  {/* Custom prompts */}
+                  <div className="custom-prompts-row">
+                    {customPrompts.map((cp) => (
+                      <div key={cp.id} className="custom-prompt-chip">
+                        <button
+                          className="custom-prompt-btn"
+                          onClick={() => handleCustomPrompt(cp)}
+                          disabled={!!quickLoading}
+                        >
+                          {quickLoading === cp.id ? '…' : cp.label}
+                        </button>
+                        <button
+                          className="custom-prompt-delete"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteCustomPrompt(cp.id); }}
+                          aria-label={`Delete ${cp.label} prompt`}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+
+                    {customPrompts.length < 5 && !showAddPrompt && (
+                      <button className="btn-ghost btn-sm add-prompt-btn" onClick={() => setShowAddPrompt(true)}>
+                        + Add prompt
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Inline add form */}
+                  {showAddPrompt && (
+                    <div className="add-prompt-form">
+                      <p className="add-prompt-form-title">New prompt</p>
+                      <label className="form-label">Button label</label>
+                      <input
+                        className="form-input"
+                        placeholder="e.g. Budget Mentions"
+                        value={newPromptLabel}
+                        onChange={(e) => setNewPromptLabel(e.target.value)}
+                      />
+                      <label className="form-label">Prompt sent to AI</label>
+                      <textarea
+                        className="form-textarea"
+                        placeholder="e.g. Extract all mentions of budget, costs, or spending from this transcript."
+                        value={newPromptText}
+                        onChange={(e) => setNewPromptText(e.target.value)}
+                        rows={3}
+                      />
+                      <div className="form-actions">
+                        <button className="btn-ghost btn-sm" onClick={() => setShowAddPrompt(false)}>Cancel</button>
+                        <button
+                          className="btn-primary btn-sm"
+                          onClick={handleSaveCustomPrompt}
+                          disabled={!newPromptLabel.trim() || !newPromptText.trim()}
+                        >
+                          Save prompt
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </section>
 
                 {quickResult && !quickLoading && (

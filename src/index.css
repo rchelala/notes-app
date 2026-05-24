@@ -946,6 +946,108 @@ button:active:not(:disabled) { transform: scale(0.96); }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }
 
+/* ─── Custom Prompts ────────────────────────────────────────────────────────── */
+.prompts-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 8px 0;
+}
+
+.custom-prompts-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.custom-prompt-chip {
+  display: flex;
+  align-items: center;
+  background: var(--surface-elevated);
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  overflow: hidden;
+  opacity: 0.85;
+}
+
+.custom-prompt-btn {
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  padding: 5px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.custom-prompt-delete {
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 4px 7px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.add-prompt-btn {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
+.add-prompt-form {
+  background: var(--surface-elevated);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-prompt-form-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.form-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.form-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-textarea {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 /* ─── Mobile ────────────────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
   .library-header { flex-wrap: wrap; height: auto; padding: 10px 16px; }
