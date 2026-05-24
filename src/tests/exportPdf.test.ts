@@ -14,8 +14,8 @@ const mockMeeting: Meeting = {
     topics: ['Onboarding', 'Retention'],
   },
   attendees: ['Sarah K.', 'Mike R.'],
-  createdAt: new Date('2026-05-24').getTime(),
-  updatedAt: new Date('2026-05-24').getTime(),
+  createdAt: new Date('2026-05-24T12:00:00').getTime(),
+  updatedAt: new Date('2026-05-24T12:00:00').getTime(),
   durationSeconds: 1800,
 };
 

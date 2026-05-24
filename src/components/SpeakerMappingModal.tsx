@@ -43,8 +43,8 @@ export const SpeakerMappingModal = ({ speakerCount, attendees, onApply, onSkip }
                 value={mapping[i] ?? 'Unknown'}
                 onChange={(e) => setMapping(prev => ({ ...prev, [i]: e.target.value }))}
               >
-                {options.map(opt => (
-                  <option key={opt} value={opt}>{opt}</option>
+                {options.map((opt, idx) => (
+                  <option key={idx} value={opt}>{opt}</option>
                 ))}
               </select>
             </div>

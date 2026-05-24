@@ -107,8 +107,14 @@ export const useCustomPrompts = (userId: string | null) => {
   const saveCustomPrompts = async (prompts: CustomPrompt[]) => {
     if (!userId) return;
     const capped = prompts.slice(0, 5);
-    await setDoc(doc(db, 'users', userId), { customPrompts: capped }, { merge: true });
+    const previous = customPrompts;
     setCustomPrompts(capped);
+    try {
+      await setDoc(doc(db, 'users', userId), { customPrompts: capped }, { merge: true });
+    } catch (err) {
+      setCustomPrompts(previous);
+      throw err;
+    }
   };
 
   return { customPrompts, saveCustomPrompts };

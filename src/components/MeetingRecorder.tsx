@@ -52,6 +52,7 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onUpdateAtten
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>('');
   const [showSpeakerModal, setShowSpeakerModal] = useState(false);
+  const [modalSpeakerCount, setModalSpeakerCount] = useState(0);
 
   const { customPrompts, saveCustomPrompts } = useCustomPrompts(userId);
 
@@ -134,6 +135,7 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onUpdateAtten
     }
     setRecordingState('stopped');
     if (!existingMeeting && speakerCount > 1) {
+      setModalSpeakerCount(speakerCount);
       setShowSpeakerModal(true);
     }
   }, [stop, existingMeeting]);
@@ -459,7 +461,7 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onUpdateAtten
             <div className="meeting-panel-header">
               <div className="transcript-header">
                 <h2>Transcript</h2>
-                {recordingState === 'stopped' && !editingTranscript && (
+                {recordingState === 'stopped' && !editingTranscript && existingMeeting && (
                   <button className="btn-ghost btn-sm" onClick={handleStartEdit}>
                     ✏️ Edit
                   </button>
@@ -687,12 +689,14 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onUpdateAtten
       </div>
       {showSpeakerModal && (
         <SpeakerMappingModal
-          speakerCount={detectedSpeakers}
+          speakerCount={modalSpeakerCount}
           attendees={attendees}
           onSkip={() => setShowSpeakerModal(false)}
           onApply={(mapping) => {
             setTranscript(prev => {
-              const speakerNums = Object.keys(mapping).join('|');
+              const speakerNums = Object.keys(mapping)
+                .sort((a, b) => b.length - a.length || Number(a) - Number(b))
+                .join('|');
               const pattern = new RegExp(`\\[Speaker (${speakerNums})\\]:`, 'g');
               return prev.replace(pattern, (_, num) => `[${mapping[Number(num)]}]:`);
             });

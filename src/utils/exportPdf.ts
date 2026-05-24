@@ -15,7 +15,7 @@ export function buildPdfContent(meeting: Meeting): PdfContent {
   return {
     title: meeting.title,
     date: new Date(meeting.createdAt).toLocaleDateString('en-US', {
-      month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+      month: 'long', day: 'numeric', year: 'numeric',
     }),
     attendees: meeting.attendees,
     overview: meeting.summary?.overview ?? '',
