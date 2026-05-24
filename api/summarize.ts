@@ -74,11 +74,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    if (customPrompt) {
-      const prompt = `${customPrompt}\n\nReturn ONLY valid JSON, no markdown, no code fences:\n{ "items": ["item 1", "item 2"] }\n\nTranscript:\n${transcript}`;
+    const trimmedCustomPrompt = customPrompt?.trim();
+
+    if (trimmedCustomPrompt) {
+      const prompt = `${trimmedCustomPrompt}\n\nReturn ONLY valid JSON, no markdown, no code fences:\n{ "items": ["item 1", "item 2"] }\n\nTranscript:\n${transcript}`;
       const cleaned = await callGemini(apiKey, prompt);
-      const parsed = JSON.parse(cleaned) as { items: string[] };
-      return res.status(200).json({ items: parsed.items ?? [] });
+      const parsed = JSON.parse(cleaned) as { items?: unknown };
+      const items = Array.isArray(parsed?.items) ? parsed.items as string[] : [];
+      return res.status(200).json({ items });
     }
 
     if (promptType !== 'full') {

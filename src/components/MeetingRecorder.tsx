@@ -58,6 +58,7 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onUpdateAtten
   const [showAddPrompt, setShowAddPrompt] = useState(false);
   const [newPromptLabel, setNewPromptLabel] = useState('');
   const [newPromptText, setNewPromptText] = useState('');
+  const [savingPrompts, setSavingPrompts] = useState(false);
 
   const enumerateMics = useCallback(async () => {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -273,16 +274,27 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onUpdateAtten
   const handleSaveCustomPrompt = async () => {
     const label = newPromptLabel.trim();
     const prompt = newPromptText.trim();
-    if (!label || !prompt || customPrompts.length >= 5) return;
-    const updated = [...customPrompts, { id: uuidv4(), label, prompt }];
-    await saveCustomPrompts(updated);
-    setNewPromptLabel('');
-    setNewPromptText('');
-    setShowAddPrompt(false);
+    if (!label || !prompt || customPrompts.length >= 5 || savingPrompts) return;
+    setSavingPrompts(true);
+    try {
+      const updated = [...customPrompts, { id: uuidv4(), label, prompt }];
+      await saveCustomPrompts(updated);
+      setNewPromptLabel('');
+      setNewPromptText('');
+      setShowAddPrompt(false);
+    } finally {
+      setSavingPrompts(false);
+    }
   };
 
   const handleDeleteCustomPrompt = async (id: string) => {
-    await saveCustomPrompts(customPrompts.filter(cp => cp.id !== id));
+    if (savingPrompts) return;
+    setSavingPrompts(true);
+    try {
+      await saveCustomPrompts(customPrompts.filter(cp => cp.id !== id));
+    } finally {
+      setSavingPrompts(false);
+    }
   };
 
   const handleSaveAttendees = async () => {
@@ -643,7 +655,11 @@ export const MeetingRecorder = ({ userId, existingMeeting, onSave, onUpdateAtten
                         rows={3}
                       />
                       <div className="form-actions">
-                        <button className="btn-ghost btn-sm" onClick={() => setShowAddPrompt(false)}>Cancel</button>
+                        <button className="btn-ghost btn-sm" onClick={() => {
+                          setShowAddPrompt(false);
+                          setNewPromptLabel('');
+                          setNewPromptText('');
+                        }}>Cancel</button>
                         <button
                           className="btn-primary btn-sm"
                           onClick={handleSaveCustomPrompt}

@@ -94,16 +94,21 @@ export const useCustomPrompts = (userId: string | null) => {
   useEffect(() => {
     if (!userId) { setCustomPrompts([]); return; }
     const userDoc = doc(db, 'users', userId);
-    getDoc(userDoc).then((snap) => {
-      const data = snap.data() as { customPrompts?: CustomPrompt[] } | undefined;
-      setCustomPrompts(data?.customPrompts ?? []);
-    });
+    getDoc(userDoc)
+      .then((snap) => {
+        const data = snap.data() as { customPrompts?: CustomPrompt[] } | undefined;
+        setCustomPrompts(data?.customPrompts ?? []);
+      })
+      .catch((err) => {
+        console.error('Failed to load custom prompts:', err);
+      });
   }, [userId]);
 
   const saveCustomPrompts = async (prompts: CustomPrompt[]) => {
     if (!userId) return;
-    await setDoc(doc(db, 'users', userId), { customPrompts: prompts }, { merge: true });
-    setCustomPrompts(prompts);
+    const capped = prompts.slice(0, 5);
+    await setDoc(doc(db, 'users', userId), { customPrompts: capped }, { merge: true });
+    setCustomPrompts(capped);
   };
 
   return { customPrompts, saveCustomPrompts };
