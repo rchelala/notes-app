@@ -1,7 +1,7 @@
 import type { Meeting } from '../types';
 
 export interface MatchSnippet {
-  source: 'transcript' | 'summary';
+  source: 'transcript' | 'summary' | 'title';
   text: string;
 }
 
@@ -34,6 +34,10 @@ export function getMatchSnippet(meeting: Meeting, query: string): MatchSnippet |
   if (!query.trim()) return null;
   const q = query.toLowerCase();
   const { transcript, summary } = haystack(meeting);
+
+  if (meeting.title.toLowerCase().includes(q)) {
+    return { source: 'title', text: meeting.title };
+  }
 
   if (transcript.toLowerCase().includes(q)) {
     const idx = transcript.toLowerCase().indexOf(q);

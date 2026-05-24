@@ -848,7 +848,11 @@ button:active:not(:disabled) { transform: scale(0.96); }
 }
 
 .match-snippet--summary {
-  border-left: 2px solid #e07b39;
+  border-left: 2px solid var(--accent-orange, #e07b39);
+}
+
+.match-snippet--title {
+  border-left: 2px solid var(--text-muted);
 }
 
 .match-snippet-label {

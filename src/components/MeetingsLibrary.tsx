@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Meeting } from '../types';
 import { searchMeetings, getMatchSnippet } from '../utils/searchMeetings';
 
@@ -30,6 +30,10 @@ export const MeetingsLibrary = ({
   const [query, setQuery] = useState('');
   const filtered = searchMeetings(meetings, query);
 
+  useEffect(() => {
+    if (meetings.length === 0) setQuery('');
+  }, [meetings.length]);
+
   return (
   <div className="meetings-library">
     <header className="library-header">
@@ -51,12 +55,13 @@ export const MeetingsLibrary = ({
         <input
           className="search-input"
           type="text"
+          aria-label="Search meetings"
           placeholder="Search transcripts and summaries…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
         {query && (
-          <button className="search-clear" onClick={() => setQuery('')}>✕</button>
+          <button className="search-clear" onClick={() => setQuery('')} aria-label="Clear search">✕</button>
         )}
       </div>
     )}
@@ -106,7 +111,7 @@ export const MeetingsLibrary = ({
               {snippet && (
                 <div className={`match-snippet match-snippet--${snippet.source}`}>
                   <span className="match-snippet-label">
-                    {snippet.source === 'transcript' ? 'Transcript' : 'Summary'}
+                    {snippet.source === 'transcript' ? 'Transcript' : snippet.source === 'summary' ? 'Summary' : 'Title'}
                   </span>
                   {' · '}
                   {snippet.text}

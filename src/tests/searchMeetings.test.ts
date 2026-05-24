@@ -65,4 +65,27 @@ describe('getMatchSnippet', () => {
   it('returns null when no match', () => {
     expect(getMatchSnippet(base, 'zzz')).toBeNull();
   });
+
+  it('returns title snippet when match is only in title', () => {
+    const m = { ...base, title: 'Budget Planning', transcript: '', summary: null };
+    const result = getMatchSnippet(m, 'budget');
+    expect(result?.source).toBe('title');
+    expect(result?.text).toBe('Budget Planning');
+  });
+
+  it('does not prepend ellipsis when match is at position 0', () => {
+    const m = { ...base, transcript: 'retention is the main topic today' };
+    expect(getMatchSnippet(m, 'retention')?.text.startsWith('…')).toBe(false);
+  });
+
+  it('does not append ellipsis when match is at end of transcript', () => {
+    const m = { ...base, transcript: 'the key word is retention' };
+    expect(getMatchSnippet(m, 'retention')?.text.endsWith('…')).toBe(false);
+  });
+
+  it('handles transcript shorter than the context window', () => {
+    const m = { ...base, transcript: 'hi' };
+    const result = getMatchSnippet(m, 'hi');
+    expect(result?.text).toBe('hi');
+  });
 });
