@@ -648,6 +648,12 @@ button:active:not(:disabled) { transform: scale(0.96); }
 .attendees-section {
   padding: 12px 24px 0;
 }
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
 .attendees-header {
   display: flex;
   align-items: center;

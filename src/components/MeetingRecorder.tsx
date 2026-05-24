@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Meeting, MeetingSummary } from '../types';
 import { useDualStreamTranscription } from '../hooks/useDualStreamTranscription';
+import { exportMeetingPdf } from '../utils/exportPdf';
 
 interface Props {
   userId: string;
@@ -465,7 +466,17 @@ export const MeetingRecorder = ({ userId: _userId, existingMeeting, onSave, onUp
           {/* Summary panel */}
           <div className="meeting-panel">
             <div className="meeting-panel-header">
-              <h2>AI Summary</h2>
+              <div className="summary-header">
+                <h2>AI Summary</h2>
+                {summary && existingMeeting && (
+                  <button
+                    className="btn-ghost btn-sm"
+                    onClick={() => exportMeetingPdf({ ...existingMeeting, summary, transcript })}
+                  >
+                    ⬇️ Export PDF
+                  </button>
+                )}
+              </div>
             </div>
             {!summary && !analyzing && (
               <div className="summary-empty">
