@@ -1,5 +1,3 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 const GEMINI_API_URL =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
@@ -108,24 +106,31 @@ async function generateJson<T>(apiKey: string, prompt: string, schema: unknown):
   throw new Error("The AI response couldn't be read. Please try again.");
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+function json(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export default async (req: Request) => {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return json({ error: 'Method not allowed' }, 405);
   }
 
-  const { transcript, promptType = 'full', customPrompt } = req.body as {
+  const { transcript, promptType = 'full', customPrompt } = await req.json() as {
     transcript?: string;
     promptType?: PromptType;
     customPrompt?: string;
   };
 
   if (!transcript || transcript.trim().length < 50) {
-    return res.status(400).json({ error: 'Transcript too short to summarize.' });
+    return json({ error: 'Transcript too short to summarize.' }, 400);
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'Gemini API key not configured on server.' });
+    return json({ error: 'Gemini API key not configured on server.' }, 500);
   }
 
   try {
@@ -135,14 +140,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const prompt = `${trimmedCustomPrompt}\n\nReturn ONLY valid JSON, no markdown, no code fences:\n{ "items": ["item 1", "item 2"] }\n\nTranscript:\n${transcript}`;
       const parsed = await generateJson<{ items?: unknown }>(apiKey, prompt, ITEMS_SCHEMA);
       const items = Array.isArray(parsed?.items) ? parsed.items as string[] : [];
-      return res.status(200).json({ items });
+      return json({ items }, 200);
     }
 
     if (promptType !== 'full') {
       const basePrompt = QUICK_PROMPTS[promptType as Exclude<PromptType, 'full'>];
       const prompt = `${basePrompt}\n\nTranscript:\n${transcript}`;
       const parsed = await generateJson<{ items?: string[] }>(apiKey, prompt, ITEMS_SCHEMA);
-      return res.status(200).json({ items: parsed.items ?? [] });
+      return json({ items: parsed.items ?? [] }, 200);
     }
 
     // Full analysis (existing behavior)
@@ -165,10 +170,10 @@ Transcript:
 ${transcript}`;
 
     const summary = await generateJson<unknown>(apiKey, prompt, SUMMARY_SCHEMA);
-    return res.status(200).json({ summary });
+    return json({ summary }, 200);
   } catch (err) {
     console.error('Summarize error:', err);
     const message = err instanceof Error ? err.message : "The AI response couldn't be read. Please try again.";
-    return res.status(500).json({ error: message });
+    return json({ error: message }, 500);
   }
-}
+};
